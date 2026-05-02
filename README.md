@@ -1,0 +1,148 @@
+# GPT Image Translator
+
+一个基于 Deno 的命令行工具，用于批量翻译目录中的图片。程序会递归扫描输入目录，将图片发送到 OpenAI-compatible `/v1/images/edits` 接口，并按原目录结构写入输出目录。
+
+## 功能
+
+- 批量扫描 `.jpg`、`.jpeg`、`.png`、`.webp` 图片
+- 保留输入目录的相对目录结构
+- 支持 YAML 配置文件
+- 支持 OpenAI-compatible 图片编辑接口
+- 使用 SQLite 保存 runs / jobs / attempts / outputs
+- 支持断点续跑、重试和失败查询
+- 支持 `status`、`inspect`、`failed` 查询命令
+- 支持配置文件版本升级
+- 支持可选诊断日志
+
+## 环境要求
+
+- Deno 2.x
+- 可访问的 OpenAI-compatible 图片编辑 API
+- API key，可以通过环境变量或配置文件提供
+
+## 快速开始
+
+复制示例配置：
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+编辑 `config.yaml`，至少确认以下字段：
+
+```yaml
+inputDir: ./input
+outputDir: ./output
+
+openai:
+  baseUrl: https://api.openai.com/v1
+  apiKeyEnv: OPENAI_API_KEY
+  model: gpt-image-2
+
+prompt: |
+  Translate all text in the image to Simplified Chinese while preserving
+  the original layout, visual composition, typography style, and image content.
+```
+
+设置环境变量：
+
+```bash
+export OPENAI_API_KEY=your_api_key
+```
+
+也可以直接在本地私有配置中写入：
+
+```yaml
+openai:
+  apiKey: your_api_key
+```
+
+`config.yaml` 已被 `.gitignore` 忽略，避免误提交本地密钥。
+
+## 使用
+
+试运行，只扫描和规划，不请求 API：
+
+```bash
+gpt-image-translator --config ./config.yaml --dry-run
+```
+
+执行翻译：
+
+```bash
+gpt-image-translator --config ./config.yaml
+```
+
+查看最近 runs：
+
+```bash
+gpt-image-translator status --config ./config.yaml --limit 10
+```
+
+查看指定 run 详情：
+
+```bash
+gpt-image-translator inspect --config ./config.yaml --run <runId>
+```
+
+查看失败 jobs：
+
+```bash
+gpt-image-translator failed --config ./config.yaml --run <runId>
+```
+
+升级旧配置文件：
+
+```bash
+gpt-image-translator config upgrade --config ./config.yaml --dry-run
+gpt-image-translator config upgrade --config ./config.yaml
+```
+
+## 配置升级
+
+默认升级模式会尽量保留注释和原格式，只追加缺失的顶层配置块。完整重写配置需要显式使用：
+
+```bash
+gpt-image-translator config upgrade --config ./config.yaml --full-update --allow-drop-comments
+```
+
+完整重写可能丢失注释和原有排版。
+
+## 日志
+
+诊断日志默认关闭，不影响命令行进度输出。可以在配置中开启：
+
+```yaml
+logging:
+  enabled: true
+  level: info
+  dir: ./logs
+  console: false
+  file: true
+```
+
+日志文件会按 run id 写入配置的日志目录。
+
+## 开发
+
+格式化：
+
+```bash
+deno task fmt
+```
+
+类型检查：
+
+```bash
+deno task check
+```
+
+运行测试：
+
+```bash
+deno task test
+```
+
+## 许可证
+
+MIT
