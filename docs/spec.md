@@ -125,7 +125,7 @@ defaults < YAML config < CLI flags
 Representative YAML:
 
 ```yaml
-configVersion: 1
+configVersion: 2
 
 inputDir: ./input
 outputDir: ./output
@@ -169,6 +169,13 @@ retry:
 storage:
   sqlitePath: ./state/translator.db
 
+preprocess:
+  aspectPad:
+    enabled: false
+    fill: transparent
+    cropBackToOriginal: false
+    intermediateDir: .intermediate
+
 logging:
   enabled: false
   level: info
@@ -191,6 +198,7 @@ Config upgrade behavior notes:
 - The default upgrade mode should preserve comments by only applying versioned text migrations.
 - Version `0 -> 1` inserts `configVersion` near the beginning and appends newly introduced top-level
   blocks such as `logging` at the end.
+- Version `1 -> 2` updates `configVersion` and appends the optional `preprocess.aspectPad` block.
 - `--full-update` may rewrite the complete config into the latest shape, but it can drop original
   comments and formatting.
 - `--full-update` must reject commented files unless `--allow-drop-comments` is provided.
@@ -225,6 +233,109 @@ scan input directory
   -> write output bytes to the chosen path
   -> persist status, attempts, and metadata
 ```
+
+## Aspect-Ratio Preprocessing Design
+
+`gpt-image-2` image edit requests only expose fixed canvas sizes through `size`: `1024x1024`,
+`1024x1536`, and `1536x1024`. Source images with a different ratio can be cropped or visually
+altered by the model. The preprocessing feature should reduce that risk by padding the input image
+to the nearest supported API ratio before the API call, while preserving the original pixels at
+their original scale.
+
+This feature is optional and disabled by default. When disabled, the current v0.1 behavior must stay
+unchanged: the original input image path is sent to the API and the configured `openai.image.size`
+behavior applies as it does now.
+
+Planned configuration shape:
+
+```yaml
+preprocess:
+  aspectPad:
+    enabled: false
+    fill: transparent # transparent / white
+    cropBackToOriginal: false
+    intermediateDir: .intermediate
+```
+
+Preprocessing flow when enabled:
+
+```text
+job input image
+  -> read source dimensions
+  -> choose nearest supported API canvas ratio
+  -> compute padded canvas dimensions without shrinking source pixels
+  -> render source image centered on the padded canvas
+  -> send padded temporary input to /v1/images/edits
+  -> set request size to the selected API canvas size
+  -> decode API output
+  -> optionally preserve uncropped API output under outputDir/intermediateDir
+  -> optionally crop API output back to the original source rectangle
+  -> write final output to the normal job output path
+```
+
+Pipeline boundaries:
+
+- The pure aspect-ratio planner belongs under `src/core`, not under `src/openai`, because it is a
+  provider-independent decision based on dimensions and supported canvas ratios.
+- The image processing adapter should own reading dimensions, padding, temporary file creation, and
+  crop-back. Queue code should call this adapter through a small interface rather than manipulating
+  image pixels directly.
+- The OpenAI client should only receive the prepared image path and the selected request `size`; it
+  should not decide how padding or crop-back works.
+- Temporary padded inputs are implementation details and should be cleaned up after the job attempt
+  when safe. Durable intermediate API outputs are only kept when `cropBackToOriginal` is enabled.
+
+Planner rules:
+
+- Supported API ratios are derived from `1024x1024`, `1024x1536`, and `1536x1024`.
+- Select the supported ratio with the smallest absolute ratio difference from the source ratio.
+- Tie-break deterministically in favor of the smaller padding area, then the stable size order
+  `1024x1024`, `1024x1536`, `1536x1024`.
+- The padded canvas is the selected ratio scaled up just enough to contain the source width and
+  height; source pixels are never downscaled during preprocessing.
+- The source rectangle is centered in the padded canvas. Odd padding pixels may differ by one pixel;
+  store the exact left/top/width/height rectangle for crop-back.
+
+Fill behavior:
+
+- `transparent` uses transparent padding when the generated padded input format supports alpha.
+- `white` uses opaque white padding.
+- If a source or selected temporary format cannot preserve transparency, the implementation must
+  either use a lossless alpha-capable temporary format such as PNG or fail clearly during
+  preprocessing. Silent conversion to a visually different background is not acceptable.
+
+Crop-back behavior:
+
+- `cropBackToOriginal: false` writes the uncropped API output as the final output, preserving the
+  padded canvas composition returned by the API.
+- `cropBackToOriginal: true` stores the uncropped API output under
+  `outputDir/intermediateDir/<job-relative-output>` and writes a cropped final output to the normal
+  job output path.
+- Crop-back must crop only; it must not resize. The crop rectangle should be mapped from the source
+  rectangle in the padded input to the API output dimensions. If the API returns a different pixel
+  size than requested, scale the crop rectangle proportionally and round deterministically.
+
+Storage and query implications:
+
+- The existing `outputs` table can continue to represent the final user-facing output.
+- Preprocessing metadata should be persisted so future `inspect` output and Web UI views can explain
+  selected API size, padded canvas dimensions, source rectangle, fill mode, crop-back state, and any
+  preserved uncropped output path.
+- Prefer extending output/job metadata with explicit nullable columns or a small processing metadata
+  table over encoding operational behavior only in log lines. The exact schema should be chosen in
+  the implementation task after checking migration impact.
+- Attempt records should keep failure details for preprocessing errors. Invalid or unsupported image
+  processing should be non-retryable; transient filesystem failures may remain retryable if they can
+  be classified safely.
+
+Image library direction:
+
+- Use a mature Deno-compatible image processing dependency only after verifying Windows support,
+  supported formats, alpha handling, and whether it requires native binaries.
+- Prefer JSR or Deno-native packages. An npm package is acceptable only if no suitable Deno/JSR
+  option supports dimension probing, padding/compositing, and cropping reliably.
+- Record the chosen dependency and tradeoffs in `docs/tasks.md` or a short ADR before
+  implementation.
 
 ## Error Handling
 

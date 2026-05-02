@@ -91,6 +91,29 @@ Deno.test("OpenAIImageClient throws classified API errors", async () => {
   }
 });
 
+Deno.test("OpenAIImageClient allows request size override", async () => {
+  const imagePath = await Deno.makeTempFile({ suffix: ".jpg" });
+  await Deno.writeFile(imagePath, new Uint8Array([1, 2, 3]));
+
+  let size: FormDataEntryValue | null = null;
+  const client = new OpenAIImageClient(config, "test-key", async (_input, init) => {
+    const body = (init as globalThis.RequestInit | undefined)?.body;
+    if (body instanceof FormData) size = body.get("size");
+
+    return new Response(
+      JSON.stringify({
+        output_format: "png",
+        data: [{ b64_json: btoa("abc") }],
+      }),
+      { status: 200 },
+    );
+  });
+
+  await client.editImage({ imagePath, prompt: "translate", size: "1024x1536" });
+
+  assertEquals(size, "1024x1536");
+});
+
 Deno.test("createOpenAIImageClient prefers apiKey from config", () => {
   const client = createOpenAIImageClient({
     ...config,

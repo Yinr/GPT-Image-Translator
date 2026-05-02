@@ -9,6 +9,7 @@ export interface AppConfig {
   queue: QueueConfig;
   retry: RetryConfig;
   storage: StorageConfig;
+  preprocess: PreprocessConfig;
   logging: LoggingConfig;
 }
 
@@ -65,6 +66,19 @@ export interface StorageConfig {
   sqlitePath: string;
 }
 
+export interface PreprocessConfig {
+  aspectPad: AspectPadConfig;
+}
+
+export interface AspectPadConfig {
+  enabled: boolean;
+  fill: AspectPadFill;
+  cropBackToOriginal: boolean;
+  intermediateDir: string;
+}
+
+export type AspectPadFill = "transparent" | "white";
+
 export interface LoggingConfig {
   enabled: boolean;
   level: LogLevel;
@@ -98,6 +112,7 @@ export interface ImageEditResult {
 export interface ImageEditRequest {
   imagePath: string;
   prompt: string;
+  size?: OpenAIImageSize;
 }
 
 export interface ApiErrorInfo {

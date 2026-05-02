@@ -208,6 +208,8 @@ manual workflow document that does not include secrets or generated outputs.
 `gpt-image-2` canvas ratio without shrinking original pixels. This stage should run before the
 OpenAI client and produce a prepared image path plus the chosen API `size`.
 
+Status: designed in `docs/spec.md` under "Aspect-Ratio Preprocessing Design".
+
 Target behavior:
 
 - Read the original image dimensions.
@@ -220,11 +222,12 @@ Target behavior:
 
 **Acceptance criteria:**
 
-- Design documents where preprocessing sits in the queue/job-runner flow.
-- Config shape is specified but not necessarily implemented.
-- Storage implications are identified for original, preprocessed, uncropped API output, and final
-  output paths.
-- Image library choice is justified, preferably JSR/Deno-compatible.
+- [x] Design documents where preprocessing sits in the queue/job-runner flow.
+- [x] Config shape is specified but not necessarily implemented.
+- [x] Storage implications are identified for original, preprocessed, uncropped API output, and
+      final output paths.
+- [x] Image library selection criteria are defined, with final dependency choice deferred to
+      implementation after Windows/Deno compatibility checks.
 
 **Verification:**
 
@@ -243,6 +246,8 @@ Target behavior:
 
 **Description:** Add configuration for optional aspect-ratio preprocessing and optional crop-back
 behavior.
+
+Status: implemented.
 
 Proposed YAML shape:
 
@@ -265,13 +270,15 @@ Config behavior:
 
 **Acceptance criteria:**
 
-- Defaults preserve current behavior.
-- Config validation rejects unknown fill modes and unsafe intermediate paths.
-- `config.example.yaml` documents the feature in Chinese.
+- [x] Defaults preserve current behavior.
+- [x] Config validation rejects unknown fill modes and unsafe intermediate paths.
+- [x] `config.example.yaml` documents the feature in Chinese.
+- [x] Config upgrade bumps to `configVersion: 2` and appends `preprocess.aspectPad` for old configs.
 
 **Verification:**
 
 - `deno test tests/config_test.ts`
+- `deno test tests/config_upgrade_test.ts tests/openai_client_test.ts`
 - `deno task check`
 
 **Files likely touched:**

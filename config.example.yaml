@@ -1,5 +1,5 @@
 # 配置文件版本。用于未来安全补全旧配置文件
-configVersion: 1
+configVersion: 2
 
 # 输入目录：程序会扫描这里的图片文件
 inputDir: ./input
@@ -107,6 +107,21 @@ retry:
 storage:
   # SQLite 数据库路径，用于记录 runs/jobs/attempts/outputs，支持断点续跑和查询
   sqlitePath: ./state/translator.db
+
+# 图片预处理配置。默认关闭，保持原图直接提交给接口
+preprocess:
+  aspectPad:
+    # 是否启用长宽比补边预处理。可选：true / false
+    enabled: false
+
+    # 补边颜色。可选：transparent / white
+    fill: transparent
+
+    # 是否在接口返回后裁剪回原图区域。可选：true / false
+    cropBackToOriginal: false
+
+    # 保留未裁剪接口输出的中间目录，必须是 outputDir 内的相对路径
+    intermediateDir: .intermediate
 
 # 诊断日志配置。默认关闭，不影响命令行进度输出
 logging:
