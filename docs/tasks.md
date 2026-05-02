@@ -297,6 +297,8 @@ Config behavior:
 **Description:** Implement pure functions that choose the best supported API canvas size and compute
 padding/crop rectangles from source dimensions.
 
+Status: implemented.
+
 Rules:
 
 - Do not shrink the original image pixels.
@@ -306,10 +308,10 @@ Rules:
 
 **Acceptance criteria:**
 
-- Square, portrait, landscape, and extreme aspect-ratio inputs choose deterministic sizes.
-- Computed canvas dimensions always contain the original dimensions.
-- Crop rectangle corresponds to the original image position within the padded canvas.
-- No filesystem or image library dependency is required for the planner tests.
+- [x] Square, portrait, landscape, and extreme aspect-ratio inputs choose deterministic sizes.
+- [x] Computed canvas dimensions always contain the original dimensions.
+- [x] Crop rectangle corresponds to the original image position within the padded canvas.
+- [x] No filesystem or image library dependency is required for the planner tests.
 
 **Verification:**
 
@@ -328,6 +330,8 @@ Rules:
 **Description:** Add an image processing adapter that can create padded input images and optionally
 crop API outputs back to the original rectangle.
 
+Status: implemented with `jsr:@matmen/imagescript@1.3.1`.
+
 Processing flow:
 
 - Read original dimensions.
@@ -339,17 +343,18 @@ Processing flow:
 
 **Acceptance criteria:**
 
-- Original pixels are not downscaled during preprocessing.
-- Padded image dimensions match the planner output.
-- Fill mode supports transparent and white padding.
-- Crop-back produces only a crop, not a resize.
-- Uncropped API output is retained under the configured intermediate directory when crop-back is
-  enabled.
-- Temporary files are cleaned up when safe, while durable intermediate outputs are preserved.
+- [x] Original pixels are not downscaled during preprocessing.
+- [x] Padded image dimensions match the planner output.
+- [x] Fill mode supports transparent and white padding.
+- [x] Crop-back produces only a crop, not a resize.
+- [ ] Uncropped API output is retained under the configured intermediate directory when crop-back is
+      enabled. This is deferred to F5 because it requires queue/job-runner output wiring.
+- [x] Temporary files are cleaned up when safe, while durable intermediate outputs are preserved.
 
 **Verification:**
 
 - Unit tests using generated small images.
+- `deno test tests/image_preprocessor_test.ts`
 - `deno task check`
 - `deno task test`
 

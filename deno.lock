@@ -3,6 +3,8 @@
   "specifiers": {
     "jsr:@db/sqlite@*": "0.13.0",
     "jsr:@denosaurs/plug@1": "1.1.0",
+    "jsr:@matmen/imagescript@*": "1.3.1",
+    "jsr:@matmen/imagescript@1.3.1": "1.3.1",
     "jsr:@std/assert@1": "1.0.18",
     "jsr:@std/cli@*": "1.0.27",
     "jsr:@std/encoding@*": "1.0.10",
@@ -32,6 +34,9 @@
         "jsr:@std/fs@1",
         "jsr:@std/path@1"
       ]
+    },
+    "@matmen/imagescript@1.3.1": {
+      "integrity": "8b3d4fc6a4597259ede419497c7dce9cc523bfdc0fa25f95a33dfab2135cc59b"
     },
     "@std/assert@1.0.18": {
       "integrity": "270245e9c2c13b446286de475131dc688ca9abcd94fc5db41d43a219b34d1c78",
@@ -74,6 +79,7 @@
   "workspace": {
     "dependencies": [
       "jsr:@db/sqlite@*",
+      "jsr:@matmen/imagescript@1.3.1",
       "jsr:@std/assert@1",
       "jsr:@std/cli@*",
       "jsr:@std/encoding@*",
