@@ -5,6 +5,7 @@ import {
   runInspectCommand,
   runStatusCommand,
 } from "../src/cli/query-commands.ts";
+import type { JobDetail, RunDetail, RunSummary } from "../src/services/run-query.ts";
 import { openDatabase } from "../src/storage/db.ts";
 import { JobStore } from "../src/storage/job-store.ts";
 import { RunStore } from "../src/storage/run-store.ts";
@@ -43,9 +44,9 @@ Deno.test("query commands expose run status, inspect, and failed jobs", async ()
     db.close();
   }
 
-  const status = await runStatusCommand(sqlitePath, 10) as Array<{ id: string }>;
-  const detail = await runInspectCommand(sqlitePath, "run-1") as { id: string; jobs: unknown[] };
-  const failed = await runFailedCommand(sqlitePath, "run-1") as Array<{ id: string }>;
+  const status: RunSummary[] = await runStatusCommand(sqlitePath, 10);
+  const detail: RunDetail | undefined = await runInspectCommand(sqlitePath, "run-1");
+  const failed: JobDetail[] = await runFailedCommand(sqlitePath, "run-1");
 
   assertEquals(status.map((run) => run.id), ["run-1"]);
   assertExists(detail);

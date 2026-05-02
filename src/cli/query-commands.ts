@@ -1,13 +1,11 @@
 import { RunQueryService } from "../services/run-query.ts";
-import type { JobDetail, RunDetail } from "../services/run-query.ts";
+import type { JobDetail, RunDetail, RunSummary } from "../services/run-query.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { openDatabase } from "../storage/db.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
 import { RunStore } from "../storage/run-store.ts";
-import type { RunRecord } from "../shared/types.ts";
-
-export async function runStatusCommand(sqlitePath: string, limit: number): Promise<RunRecord[]> {
+export async function runStatusCommand(sqlitePath: string, limit: number): Promise<RunSummary[]> {
   const service = await openQueryService(sqlitePath);
   try {
     return service.query.listRecentRuns(limit);
