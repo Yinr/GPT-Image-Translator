@@ -1,4 +1,6 @@
 import { loadConfig } from "./config/load.ts";
+import { isConfigOutdated, upgradeConfigFile } from "./config/upgrade.ts";
+import { CURRENT_CONFIG_VERSION } from "./config/defaults.ts";
 import { HELP_TEXT, parseCliArgs } from "./cli/args.ts";
 import { execute, type ExecuteResult } from "./cli/run.ts";
 import { runFailedCommand, runInspectCommand, runStatusCommand } from "./cli/query-commands.ts";
@@ -10,7 +12,14 @@ if (import.meta.main) {
 }
 
 export async function main(args: string[]): Promise<void> {
-  const cli = parseCliArgs(args);
+  let cli;
+  try {
+    cli = parseCliArgs(args);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    printHelp();
+    return;
+  }
   if (cli.help) {
     printHelp();
     return;
@@ -22,7 +31,38 @@ export async function main(args: string[]): Promise<void> {
     return;
   }
 
+  if (cli.command === "config-upgrade") {
+    const result = await upgradeConfigFile(configPath, {
+      dryRun: cli.dryRun,
+      fullUpdate: cli.fullUpdate,
+      allowDropComments: cli.allowDropComments,
+    });
+    if (!result.changed) {
+      console.log(`Config is already up to date: ${configPath}`);
+      return;
+    }
+
+    if (cli.dryRun) {
+      console.log(`Config upgrade preview: ${configPath}`);
+      console.log(`Version: ${result.fromVersion} -> ${result.toVersion}`);
+      console.log(`Mode: ${result.fullUpdate ? "full update" : "safe append"}`);
+      console.log(`Would update: ${result.appendedKeys.join(", ") || "full config"}`);
+      console.log(result.text);
+      return;
+    }
+
+    console.log(`Config upgraded: ${configPath}`);
+    console.log(`Version: ${result.fromVersion} -> ${result.toVersion}`);
+    console.log(`Updated: ${result.appendedKeys.join(", ") || "full config"}`);
+    return;
+  }
+
   const config = await loadConfig(configPath);
+  if (isConfigOutdated(config)) {
+    console.warn(
+      `Config version ${config.configVersion} is older than current version ${CURRENT_CONFIG_VERSION}. Run "gpt-image-translator config upgrade --config ${configPath}" to update it.`,
+    );
+  }
   if (cli.command === "status") {
     const runs = await runStatusCommand(config.storage.sqlitePath, cli.limit);
     console.log(JSON.stringify(runs, null, 2));

@@ -815,6 +815,58 @@ Questions this task should settle:
 
 **Estimated scope:** Small
 
+### Task F18: Add Versioned Config Upgrade Framework
+
+**Description:** Add a dedicated config upgrade module that can safely update older YAML config
+files without losing comments by default. Missing `configVersion` should be treated as version `0`,
+which represents configs created before versioning existed.
+
+Target behavior:
+
+- Add `configVersion` to the config model and example config.
+- Expose `config upgrade --config <path>` as an explicit command.
+- Validate the existing config before writing upgrade changes.
+- Default upgrade mode preserves comments by applying versioned text migrations.
+- Version `0 -> 1` inserts `configVersion` near the beginning and appends missing top-level blocks
+  such as `logging` at the end.
+- Normal runtime reads warn about outdated config versions but do not rewrite files.
+
+Full-update behavior:
+
+- `--full-update` rewrites the full config into the latest complete shape.
+- `--full-update` can drop comments and formatting.
+- `--allow-drop-comments` is required before full-update may rewrite a file containing comments.
+
+**Acceptance criteria:**
+
+- Config upgrade logic lives in a dedicated module.
+- Migrations are represented as versioned steps rather than ad-hoc text variables alone.
+- `configVersion` missing is treated as version `0`.
+- Safe mode preserves existing comments and content outside migrated insertions.
+- Full-update behavior is explicit and guarded.
+- Tests cover version `0`, missing version, full-update safety, validation before write, and
+  dry-run.
+
+**Verification:**
+
+- `deno test tests/config_upgrade_test.ts tests/cli_args_test.ts`
+- `deno task test`
+
+**Files likely touched:**
+
+- `src/config/upgrade.ts`
+- `src/config/defaults.ts`
+- `src/config/load.ts`
+- `src/config/schema.ts`
+- `src/shared/types.ts`
+- `src/cli/args.ts`
+- `src/main.ts`
+- `config.example.yaml`
+- `tests/config_upgrade_test.ts`
+- `tests/cli_args_test.ts`
+
+**Estimated scope:** Medium
+
 ## Open Planning Questions
 
 - Should `gpt-image-2-2k` and `gpt-image-2-4k` be exposed as model presets or remain plain model
@@ -834,6 +886,8 @@ Questions this task should settle:
   rolling strategy?
 - Should dry-run mode write diagnostic log files when logging is enabled, or only emit in-memory /
   console diagnostics?
+- Should future config migrations support safe insertion of missing nested fields inside existing
+  blocks, or should nested repair require `--full-update`?
 - Should prompt support per-directory or per-file overrides later?
 - Are cancellation and pause controls needed in the first CLI release or only for the future Web UI?
 

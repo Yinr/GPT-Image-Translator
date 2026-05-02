@@ -4,6 +4,7 @@ import { loadConfig } from "../src/config/load.ts";
 Deno.test("loadConfig loads example config with defaults", async () => {
   const config = await loadConfig("config.example.yaml");
 
+  assertEquals(config.configVersion, 1);
   assertEquals(config.openai.model, "gpt-image-2");
   assertEquals(config.queue.concurrency, 1);
   assertEquals(config.scan.extensions.includes(".jpg"), true);

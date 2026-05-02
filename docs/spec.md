@@ -125,6 +125,8 @@ defaults < YAML config < CLI flags
 Representative YAML:
 
 ```yaml
+configVersion: 1
+
 inputDir: ./input
 outputDir: ./output
 
@@ -181,6 +183,19 @@ Logging behavior notes:
   distinct concerns.
 - The project should not adopt `@std/log` as a new foundation because Deno marks it as no longer
   recommended and likely removable in the future.
+
+Config upgrade behavior notes:
+
+- Missing `configVersion` means version `0`, representing configs created before versioning existed.
+- `config upgrade` should validate the existing config before writing changes.
+- The default upgrade mode should preserve comments by only applying versioned text migrations.
+- Version `0 -> 1` inserts `configVersion` near the beginning and appends newly introduced top-level
+  blocks such as `logging` at the end.
+- `--full-update` may rewrite the complete config into the latest shape, but it can drop original
+  comments and formatting.
+- `--full-update` must reject commented files unless `--allow-drop-comments` is provided.
+- Normal CLI execution should warn when a config is older than the current supported version, but it
+  should not automatically rewrite the config.
 
 ## Queue Model
 
@@ -261,6 +276,8 @@ Special handling:
   disabled.
 - Always: Avoid writing raw API keys or other secrets into logs, persisted log files, or structured
   diagnostics.
+- Always: Treat config upgrades as explicit user actions; normal translate/query commands may warn
+  about old configs but must not silently rewrite them.
 - Always: Preserve directory structure from input to output.
 - Always: Persist job status before and after API attempts.
 - Always: Decode `data[0].b64_json` before writing output files.

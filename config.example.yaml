@@ -1,3 +1,6 @@
+# 配置文件版本。用于未来安全补全旧配置文件
+configVersion: 1
+
 # 输入目录：程序会扫描这里的图片文件
 inputDir: ./input
 
@@ -7,7 +10,7 @@ outputDir: ./output
 # OpenAI 兼容接口配置
 openai:
   # API 基础地址。可以写到服务根地址或 /v1，程序会自动规范化为 /v1
-  baseUrl: http://127.0.0.1:3000/v1
+  baseUrl: https://api.openai.com/v1
 
   # 可直接写 API Key。适合本地私有配置文件。
   # 若填写此项，程序会优先使用它，而不是 apiKeyEnv。

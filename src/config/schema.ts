@@ -11,6 +11,9 @@ const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 export function validateConfig(config: AppConfig): AppConfig {
   const errors: string[] = [];
 
+  if (!Number.isInteger(config.configVersion) || config.configVersion < 0) {
+    errors.push("configVersion must be a non-negative integer");
+  }
   if (!config.inputDir.trim()) errors.push("inputDir is required");
   if (!config.outputDir.trim()) errors.push("outputDir is required");
   if (!config.prompt.trim()) errors.push("prompt is required");

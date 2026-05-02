@@ -1,6 +1,9 @@
 import type { AppConfig } from "../shared/types.ts";
 
+export const CURRENT_CONFIG_VERSION = 1;
+
 export const defaultConfig: AppConfig = {
+  configVersion: CURRENT_CONFIG_VERSION,
   inputDir: "./input",
   outputDir: "./output",
   prompt: "",

@@ -1,4 +1,5 @@
 export interface AppConfig {
+  configVersion: number;
   inputDir: string;
   outputDir: string;
   prompt: string;

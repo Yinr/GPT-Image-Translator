@@ -13,6 +13,7 @@ export async function loadConfig(configPath: string): Promise<AppConfig> {
   }
 
   const merged = mergeConfig(defaultConfig, parsed);
+  if (!Object.hasOwn(parsed, "configVersion")) merged.configVersion = 0;
   normalizeConfig(merged);
   return validateConfig(merged);
 }

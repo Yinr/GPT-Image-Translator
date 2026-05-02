@@ -1,0 +1,235 @@
+import { parse, stringify } from "@std/yaml";
+import { CURRENT_CONFIG_VERSION, defaultConfig } from "./defaults.ts";
+import { validateConfig } from "./schema.ts";
+import type { AppConfig } from "../shared/types.ts";
+
+export interface UpgradeConfigOptions {
+  dryRun?: boolean;
+  fullUpdate?: boolean;
+  allowDropComments?: boolean;
+  readTextFile?: typeof Deno.readTextFile;
+  writeTextFile?: typeof Deno.writeTextFile;
+}
+
+export interface UpgradeConfigResult {
+  changed: boolean;
+  fromVersion: number;
+  toVersion: number;
+  appliedMigrations: string[];
+  appendedKeys: string[];
+  fullUpdate: boolean;
+  text: string;
+}
+
+interface ConfigMigration {
+  fromVersion: number;
+  toVersion: number;
+  name: string;
+  apply: (state: UpgradeState) => void;
+}
+
+interface UpgradeState {
+  text: string;
+  parsed: Record<string, unknown>;
+  appendedKeys: string[];
+}
+
+const CONFIG_VERSION_BLOCK = `# 配置文件版本。用于未来安全补全旧配置文件
+configVersion: 1`;
+
+const LOGGING_BLOCK = `# 诊断日志配置。默认关闭，不影响命令行进度输出
+logging:
+  # 是否启用诊断日志记录。可选：true / false
+  enabled: false
+
+  # 日志等级。可选：debug / info / warn / error
+  level: info
+
+  # 日志目录。启用文件日志时会自动创建
+  dir: ./logs
+
+  # 是否把诊断日志也输出到控制台。进度提示不受此项影响
+  console: false
+
+  # 是否写入日志文件
+  file: true`;
+
+const MIGRATIONS: ConfigMigration[] = [
+  {
+    fromVersion: 0,
+    toVersion: 1,
+    name: "add configVersion and logging defaults",
+    apply: (state) => {
+      if (!Object.hasOwn(state.parsed, "configVersion")) {
+        state.text = prependBlock(state.text, CONFIG_VERSION_BLOCK);
+        state.parsed.configVersion = 1;
+        state.appendedKeys.push("configVersion");
+      } else if (state.parsed.configVersion === 0) {
+        state.text = replaceTopLevelConfigVersion(state.text, 1);
+        state.parsed.configVersion = 1;
+        state.appendedKeys.push("configVersion");
+      }
+
+      if (!Object.hasOwn(state.parsed, "logging")) {
+        state.text = appendBlocks(state.text, [LOGGING_BLOCK]);
+        state.parsed.logging = structuredClone(defaultConfig.logging) as unknown as Record<
+          string,
+          unknown
+        >;
+        state.appendedKeys.push("logging");
+      }
+    },
+  },
+];
+
+export async function upgradeConfigFile(
+  configPath: string,
+  options: UpgradeConfigOptions = {},
+): Promise<UpgradeConfigResult> {
+  const readTextFile = options.readTextFile ?? Deno.readTextFile;
+  const writeTextFile = options.writeTextFile ?? Deno.writeTextFile;
+  const text = await readTextFile(configPath);
+  const result = upgradeConfigText(text, options);
+
+  if (result.changed && !options.dryRun) {
+    await writeTextFile(configPath, result.text);
+  }
+
+  return result;
+}
+
+export function upgradeConfigText(
+  text: string,
+  options: Pick<UpgradeConfigOptions, "fullUpdate" | "allowDropComments"> = {},
+): UpgradeConfigResult {
+  const parsed = parseConfigObject(text);
+  validateConfig(toAppConfig(parsed));
+
+  const fromVersion = readConfigVersion(parsed);
+  if (fromVersion > CURRENT_CONFIG_VERSION) {
+    throw new Error(
+      `Config version ${fromVersion} is newer than supported version ${CURRENT_CONFIG_VERSION}`,
+    );
+  }
+
+  if (options.fullUpdate) {
+    return fullUpdateConfig(text, parsed, fromVersion, Boolean(options.allowDropComments));
+  }
+
+  const state: UpgradeState = { text, parsed: { ...parsed }, appendedKeys: [] };
+  const appliedMigrations: string[] = [];
+  let currentVersion = fromVersion;
+
+  for (const migration of MIGRATIONS) {
+    if (migration.fromVersion !== currentVersion) continue;
+    migration.apply(state);
+    currentVersion = migration.toVersion;
+    appliedMigrations.push(migration.name);
+  }
+
+  if (currentVersion !== CURRENT_CONFIG_VERSION) {
+    throw new Error(
+      `No config migration path from version ${fromVersion} to ${CURRENT_CONFIG_VERSION}`,
+    );
+  }
+
+  const changed = state.text !== text;
+  return {
+    changed,
+    fromVersion,
+    toVersion: currentVersion,
+    appliedMigrations,
+    appendedKeys: state.appendedKeys,
+    fullUpdate: false,
+    text: state.text,
+  };
+}
+
+export function isConfigOutdated(config: AppConfig): boolean {
+  return config.configVersion < CURRENT_CONFIG_VERSION;
+}
+
+function fullUpdateConfig(
+  text: string,
+  parsed: Record<string, unknown>,
+  fromVersion: number,
+  allowDropComments: boolean,
+): UpgradeConfigResult {
+  if (hasComments(text) && !allowDropComments) {
+    throw new Error(
+      "Full config update would drop comments; pass --allow-drop-comments to continue",
+    );
+  }
+
+  const merged = toAppConfig(parsed);
+  merged.configVersion = CURRENT_CONFIG_VERSION;
+  validateConfig(merged);
+
+  const updatedText = stringify(merged);
+  return {
+    changed: updatedText !== text,
+    fromVersion,
+    toVersion: CURRENT_CONFIG_VERSION,
+    appliedMigrations: ["full update to current config shape"],
+    appendedKeys: [],
+    fullUpdate: true,
+    text: updatedText.endsWith("\n") ? updatedText : `${updatedText}\n`,
+  };
+}
+
+function toAppConfig(parsed: Record<string, unknown>): AppConfig {
+  const merged = deepMerge(structuredClone(defaultConfig), parsed) as AppConfig;
+  if (!Object.hasOwn(parsed, "configVersion")) merged.configVersion = 0;
+  return merged;
+}
+
+function parseConfigObject(text: string): Record<string, unknown> {
+  const parsed = parse(text) as unknown;
+  if (!isPlainObject(parsed)) {
+    throw new Error("Config file must contain a YAML object");
+  }
+  return parsed;
+}
+
+function readConfigVersion(parsed: Record<string, unknown>): number {
+  if (!Object.hasOwn(parsed, "configVersion")) return 0;
+  const version = parsed.configVersion;
+  if (!Number.isInteger(version) || typeof version !== "number" || version < 0) {
+    throw new Error("configVersion must be a non-negative integer");
+  }
+  return version;
+}
+
+function prependBlock(text: string, block: string): string {
+  return `${block}\n\n${text.replace(/^\s+/, "")}`;
+}
+
+function replaceTopLevelConfigVersion(text: string, version: number): string {
+  const replaced = text.replace(/^(configVersion\s*:\s*)\d+\s*$/m, `$1${version}`);
+  return replaced === text ? prependBlock(text, CONFIG_VERSION_BLOCK) : replaced;
+}
+
+function appendBlocks(text: string, blocks: string[]): string {
+  const base = text.endsWith("\n") ? text.trimEnd() : text;
+  return `${base}\n\n${blocks.join("\n\n")}\n`;
+}
+
+function hasComments(text: string): boolean {
+  return text.split(/\r?\n/).some((line) => line.trimStart().startsWith("#"));
+}
+
+function deepMerge(base: unknown, override: unknown): unknown {
+  if (!isPlainObject(base) || !isPlainObject(override)) return override;
+
+  for (const [key, value] of Object.entries(override)) {
+    if (value === undefined) continue;
+    const current = base[key];
+    base[key] = isPlainObject(current) && isPlainObject(value) ? deepMerge(current, value) : value;
+  }
+
+  return base;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
