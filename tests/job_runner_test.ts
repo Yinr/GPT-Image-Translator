@@ -28,6 +28,7 @@ Deno.test("runJob writes output and marks job succeeded", async () => {
     const result = await runJob({
       job,
       prompt: "translate",
+      formatFromApi: true,
       retry,
       client,
       jobStore: context.jobs,
@@ -68,6 +69,7 @@ Deno.test("runJob writes using API output format and updates job output path", a
     await runJob({
       job,
       prompt: "translate",
+      formatFromApi: true,
       retry,
       client,
       jobStore: context.jobs,
@@ -83,6 +85,41 @@ Deno.test("runJob writes using API output format and updates job output path", a
     assertEquals([...bytes], [7]);
     assertEquals(updated?.outputPath, actualOutputPath);
     assertEquals(outputs[0].outputFormat, "webp");
+  } finally {
+    context.db.close();
+  }
+});
+
+Deno.test("runJob preserves planned output path when formatFromApi is false", async () => {
+  const context = createContext();
+  try {
+    const outputDir = await Deno.makeTempDir();
+    const plannedOutputPath = join(outputDir, "out.webp");
+    const job = createJob(context, { outputPath: plannedOutputPath });
+    const client: ImageEditClientLike = {
+      editImage: () => Promise.resolve({ bytes: new Uint8Array([9]), outputFormat: "png" }),
+    };
+
+    await runJob({
+      job,
+      prompt: "translate",
+      formatFromApi: false,
+      retry,
+      client,
+      jobStore: context.jobs,
+      attemptStore: context.attempts,
+      outputStore: context.outputs,
+      now: fixedClock(),
+    });
+
+    const updated = context.jobs.get(job.id);
+    const outputs = context.outputs.listByJob(job.id);
+    const bytes = await Deno.readFile(plannedOutputPath);
+
+    assertEquals([...bytes], [9]);
+    assertEquals(updated?.outputPath, plannedOutputPath);
+    assertEquals(outputs[0].outputPath, plannedOutputPath);
+    assertEquals(outputs[0].outputFormat, "png");
   } finally {
     context.db.close();
   }
@@ -109,6 +146,7 @@ Deno.test("runJob marks retryable API errors with next attempt", async () => {
     const result = await runJob({
       job,
       prompt: "translate",
+      formatFromApi: true,
       retry,
       client,
       jobStore: context.jobs,
@@ -154,6 +192,7 @@ Deno.test("runJob marks auth errors failed and stops run", async () => {
     const result = await runJob({
       job,
       prompt: "translate",
+      formatFromApi: true,
       retry,
       client,
       jobStore: context.jobs,

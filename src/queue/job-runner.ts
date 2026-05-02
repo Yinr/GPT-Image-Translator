@@ -14,6 +14,7 @@ export interface ImageEditClientLike {
 export interface RunJobOptions {
   job: JobRecord;
   prompt: string;
+  formatFromApi: boolean;
   retry: RetryConfig;
   client: ImageEditClientLike;
   jobStore: JobStore;
@@ -45,7 +46,9 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
       imagePath: options.job.inputPath,
       prompt: options.prompt,
     });
-    const outputPath = withOutputFormat(options.job.outputPath, result.outputFormat);
+    const outputPath = options.formatFromApi
+      ? withOutputFormat(options.job.outputPath, result.outputFormat)
+      : options.job.outputPath;
     await writeImageOutput(outputPath, result.bytes);
 
     const finishedAt = now();

@@ -54,6 +54,7 @@ Deno.test("runQueue processes runnable jobs and updates run status", async () =>
       concurrency: 2,
       minDelayMs: 0,
       failFast: false,
+      formatFromApi: true,
       retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
       client,
       runStore,

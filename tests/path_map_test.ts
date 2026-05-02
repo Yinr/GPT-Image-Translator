@@ -12,6 +12,16 @@ Deno.test("mapOutputPath preserves relative structure and uses output format", (
   assertEquals(output.relativePath, "a/b/test.png");
 });
 
+Deno.test("mapOutputPath normalizes configured output format", () => {
+  const output = mapOutputPath(
+    { absolutePath: normalize("/input/a/b/test.jpg"), relativePath: "a/b/test.jpg" },
+    normalize("/output"),
+    ".WEBP",
+  );
+
+  assertEquals(output.relativePath, "a/b/test.webp");
+});
+
 Deno.test("ensureOutputDirectory creates parent directories", async () => {
   const root = await Deno.makeTempDir();
   const outputPath = join(root, "a", "b", "file.png");

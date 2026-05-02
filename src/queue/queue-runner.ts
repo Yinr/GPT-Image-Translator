@@ -12,6 +12,7 @@ export interface QueueRunnerOptions {
   concurrency: number;
   minDelayMs: number;
   failFast: boolean;
+  formatFromApi: boolean;
   retry: RetryConfig;
   client: ImageEditClientLike;
   runStore: RunStore;
@@ -88,6 +89,7 @@ async function runOneJob(
   return await runJob({
     job,
     prompt: options.prompt,
+    formatFromApi: options.formatFromApi,
     retry: options.retry,
     client: options.client,
     jobStore: options.jobStore,

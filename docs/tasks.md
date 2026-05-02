@@ -114,6 +114,8 @@ Implemented behavior notes:
 - `outputFormat` is still sent as `output_format` because it controls output decoding and file
   naming.
 - The known supported `size` values are fixed API canvas sizes, not arbitrary source-image ratios.
+- `output.formatFromApi` now controls whether the final output path follows the API response format
+  or keeps the planned extension from `openai.image.outputFormat`.
 
 Verification:
 
@@ -413,6 +415,234 @@ given output used a particular canvas size or crop behavior.
 
 **Estimated scope:** Medium
 
+### Task F7: Add Defensive Output-Format Detection Fallback
+
+**Description:** Evaluate whether the project can integrate
+[`google/magika`](https://github.com/google/magika) or an equivalent content-based format detector
+as a defensive fallback when the image API response does not provide a usable `output_format`. This
+is intentionally low priority because the normal path should continue to trust the API response
+first, and this fallback should only run when `output_format` is missing or invalid.
+
+Target behavior:
+
+- Keep `output_format` from the API response as the primary source of truth.
+- Only attempt fallback detection when `output_format` is absent, empty, or unsupported.
+- Detect format from decoded response bytes rather than from file extension.
+- Restrict accepted fallback results to the output formats the project can safely write and name.
+- Preserve current behavior when detection is unavailable, inconclusive, or too costly to enable by
+  default.
+
+**Acceptance criteria:**
+
+- The feasibility of using `Magika` from Deno on Windows is documented.
+- The fallback activation rules are specified so normal successful responses do not change behavior.
+- The design identifies how detected format maps to output extension and persisted output metadata.
+- Failure behavior is specified for unknown or ambiguous detection results.
+- If implementation proceeds, tests cover missing `output_format` with a correctly detected format.
+
+**Verification:**
+
+- `docs/spec.md` or a related design note records the decision.
+- If implemented later: `deno test tests/response_parser_test.ts tests/job_runner_test.ts`
+
+**Files likely touched:**
+
+- `docs/tasks.md`
+- `docs/spec.md`
+- `src/openai/response-parser.ts`
+- `src/queue/job-runner.ts`
+- `src/fs/output-path.ts`
+- `src/storage/output-store.ts`
+- `tests/response_parser_test.ts`
+- `tests/job_runner_test.ts`
+
+**Estimated scope:** Medium
+
+### Task F8: Design Multi-Key and Provider-Pool Scheduling Module
+
+**Description:** Design a later-phase scheduling module that can manage multiple API keys and, in a
+future expansion, multiple providers. This should be treated as a major-version feature rather than
+an incremental patch because it affects configuration, runtime selection, retry behavior,
+parallelism, observability, and failure handling.
+
+Design goals:
+
+- Keep the first implementation step small: support multiple API keys for one provider.
+- Treat key selection as a separate scheduling concern rather than burying it inside the OpenAI
+  client.
+- Allow future expansion from a single-provider key pool to a multi-provider account pool.
+- Persist enough runtime state to understand which key/provider handled which job.
+- Avoid leaking secrets in logs, query output, or persisted diagnostic metadata.
+
+**Acceptance criteria:**
+
+- The design defines a dedicated scheduler/module boundary for account/key selection.
+- The design breaks implementation into small stages with backward-compatible entry points.
+- Config shape is proposed for single-provider multi-key support and future multi-provider support.
+- Scheduling strategy tradeoffs are documented before implementation starts.
+
+**Verification:**
+
+- `docs/spec.md` updated with the agreed architecture.
+- `docs/tasks.md` updated if stage boundaries change.
+
+**Files likely touched:**
+
+- `docs/spec.md`
+- `docs/tasks.md`
+- Possibly an ADR under `docs/adr/`
+
+**Estimated scope:** Large
+
+### Task F9: Add Single-Provider Multi-Key Rotation
+
+**Description:** Add the first minimal version of multi-key support for one provider. The initial goal
+is to let one configured provider hold multiple API keys and rotate between them for requests.
+
+Initial target behavior:
+
+- Support multiple API keys for the same provider in config.
+- Default to simple round-robin or stable rotation across available keys.
+- Keep single-key config working without migration pressure.
+- Record which logical key handled each attempt, using masked or non-secret identifiers only.
+
+**Acceptance criteria:**
+
+- A provider can be configured with more than one API key.
+- Request execution can select the next usable key without changing existing single-key behavior.
+- Attempt metadata can show which key slot or key label was used without storing raw secrets.
+- Unit tests cover deterministic rotation behavior.
+
+**Verification:**
+
+- `deno test tests/openai_client_test.ts tests/job_runner_test.ts tests/storage_test.ts`
+- `deno task check`
+
+**Files likely touched:**
+
+- `src/shared/types.ts`
+- `src/config/schema.ts`
+- `src/openai/client.ts`
+- `src/queue/job-runner.ts`
+- `src/storage/migrations.ts`
+- `tests/openai_client_test.ts`
+- `tests/job_runner_test.ts`
+- `tests/storage_test.ts`
+
+**Estimated scope:** Medium
+
+### Task F10: Add Key Failover and Usage-Balancing Strategies
+
+**Description:** Expand single-provider multi-key support with selectable scheduling strategies.
+Expected early strategies are:
+
+- Prefer one key until it fails, then switch to the next available key.
+- Distribute traffic as evenly as possible across all healthy keys.
+
+Behavior notes:
+
+- Retryable and non-retryable failures may need different key-health effects.
+- Temporary rate-limit failures should not immediately mark a key permanently unusable.
+- Strategy selection should be explicit in config rather than hidden in heuristics.
+
+**Acceptance criteria:**
+
+- At least two strategies are supported: primary-with-failover and balanced rotation.
+- Key-health state is tracked well enough to avoid obviously bad repeated selection.
+- Scheduler behavior remains deterministic enough for tests.
+- CLI/query inspection can show enough metadata to diagnose why a key was chosen or skipped.
+
+**Verification:**
+
+- `deno test tests/job_runner_test.ts tests/queue_runner_test.ts tests/query_commands_test.ts`
+- `deno task check`
+
+**Files likely touched:**
+
+- `src/queue/`
+- `src/services/run-query.ts`
+- `src/cli/query-commands.ts`
+- `src/storage/`
+- `tests/job_runner_test.ts`
+- `tests/queue_runner_test.ts`
+- `tests/query_commands_test.ts`
+
+**Estimated scope:** Large
+
+### Task F11: Enable Concurrency Scheduling by Key Capacity
+
+**Description:** Allow runtime parallelism to scale with available healthy keys so the queue can make
+safe concurrent requests without overloading a single key.
+
+Target behavior:
+
+- Concurrency can be capped globally and additionally constrained by key availability.
+- A single healthy key may still force effectively serialized execution.
+- Multiple healthy keys can unlock controlled parallelism.
+- Scheduling should avoid giving multiple simultaneous jobs to a key that is currently cooling down
+  from rate limits when alternatives exist.
+
+**Acceptance criteria:**
+
+- The scheduler can limit active jobs based on key availability.
+- Parallel execution remains compatible with retry and resume behavior.
+- Rate-limited keys can temporarily reduce usable scheduling capacity.
+- Tests cover one-key and multi-key concurrency behavior.
+
+**Verification:**
+
+- `deno test tests/queue_runner_test.ts tests/job_runner_test.ts`
+- `deno task test`
+
+**Files likely touched:**
+
+- `src/queue/queue-runner.ts`
+- `src/queue/job-runner.ts`
+- `src/openai/`
+- `tests/queue_runner_test.ts`
+- `tests/job_runner_test.ts`
+
+**Estimated scope:** Large
+
+### Task F12: Expand to Multi-Provider Account Pools
+
+**Description:** Generalize the key scheduler into a provider/account pool that can manage multiple
+providers, multiple API keys per provider, per-provider capability differences, and ongoing health
+tracking for intelligent request routing.
+
+Longer-term target behavior:
+
+- Support multiple providers in one config.
+- Support multiple API keys under each provider.
+- Track provider/key health and recent failures.
+- Route jobs to an appropriate provider/key based on health, capability, and scheduling policy.
+- Keep provider-specific request differences out of high-level queue code as much as possible.
+
+**Acceptance criteria:**
+
+- Config can describe a provider pool without breaking the simple single-provider path.
+- Health tracking distinguishes provider-level failures from key-level failures.
+- The scheduling module can choose among providers and keys using explicit policy.
+- Query/inspection output can explain which provider/key handled each attempt.
+
+**Verification:**
+
+- `docs/spec.md` updated with provider-pool design.
+- `deno task check`
+- `deno task test`
+
+**Files likely touched:**
+
+- `src/config/`
+- `src/openai/` or a future `src/providers/`
+- `src/queue/`
+- `src/services/run-query.ts`
+- `src/storage/`
+- `tests/`
+- `docs/spec.md`
+
+**Estimated scope:** Very Large
+
 ## Open Planning Questions
 
 - Should `gpt-image-2-2k` and `gpt-image-2-4k` be exposed as model presets or remain plain model
@@ -422,6 +652,12 @@ given output used a particular canvas size or crop behavior.
 - Should intermediate preprocessed API inputs be preserved, or only uncropped API outputs?
 - Should crop-back metadata be stored in the existing `outputs` table or a new processing-metadata
   table?
+- If `output_format` is missing, should fallback detection silently infer the extension, warn in
+  logs/query output, or require opt-in configuration?
+- Should multi-key scheduling metadata live in attempts, a separate account-health table, or both?
+- For multi-provider support, should provider failover be automatic or require explicit routing
+  policy?
+- Should key balancing be purely round-robin, weighted, cooldown-aware, or usage-quota-aware?
 - Should prompt support per-directory or per-file overrides later?
 - Are cancellation and pause controls needed in the first CLI release or only for the future Web UI?
 

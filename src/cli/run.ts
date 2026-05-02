@@ -78,7 +78,11 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       runId,
       images,
       outputFor: (image) => {
-        const outputPath = mapOutputPath(image, options.config.outputDir, "png").absolutePath;
+        const outputPath = mapOutputPath(
+          image,
+          options.config.outputDir,
+          options.config.openai.image.outputFormat,
+        ).absolutePath;
         return {
           path: outputPath,
           skip: shouldSkipExisting(outputPath, options.config.output),
@@ -112,6 +116,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       concurrency: options.config.queue.concurrency,
       minDelayMs: options.config.queue.minDelayMs,
       failFast: options.config.queue.failFast,
+      formatFromApi: options.config.output.formatFromApi,
       retry: options.config.retry,
       client: createOpenAIImageClient(options.config.openai),
       runStore,

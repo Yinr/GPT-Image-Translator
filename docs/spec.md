@@ -21,6 +21,8 @@ scripts and notes are stored under `.local/smoke-test/` and should remain untrac
 - Image edit responses are JSON, not raw image bytes.
 - Output image bytes are returned as base64 in `data[0].b64_json`.
 - Output extension should come from top-level `output_format`, observed as `png`.
+- `output.formatFromApi` controls whether the final output path follows response `output_format` or
+  keeps the configured `openai.image.outputFormat` extension.
 - A real image edit request took about 205 seconds, so long timeouts and durable job state are
   required.
 
@@ -128,6 +130,8 @@ outputDir: ./output
 
 openai:
   baseUrl: http://127.0.0.1:3000/v1
+  # Optional: use a direct key in a local private config file.
+  # apiKey: sk-your-key
   apiKeyEnv: OPENAI_API_KEY
   model: gpt-image-2
 
@@ -188,7 +192,8 @@ scan input directory
   -> run with configured concurrency and delay
   -> call /v1/images/edits
   -> decode data[0].b64_json
-  -> write output using output_format extension
+  -> choose final output path according to output.formatFromApi
+  -> write output bytes to the chosen path
   -> persist status, attempts, and metadata
 ```
 
@@ -236,9 +241,14 @@ Special handling:
 ## Boundaries
 
 - Always: Treat API keys as secrets and avoid printing them.
+- Always: Allow API keys to come from either `openai.apiKey` or `openai.apiKeyEnv`, with
+  `openai.apiKey` taking precedence when both are set.
 - Always: Preserve directory structure from input to output.
 - Always: Persist job status before and after API attempts.
-- Always: Decode `data[0].b64_json` and use `output_format` for the output extension.
+- Always: Decode `data[0].b64_json` before writing output files.
+- Always: Use response `output_format` for the final extension when `output.formatFromApi` is
+  enabled.
+- Always: Keep the configured planned extension when `output.formatFromApi` is disabled.
 - Always: Prefer Deno Standard Library or mature Deno libraries over project-local utility
   implementations for common infrastructure.
 - Always: Prefer JSR dependencies and record any exception in the spec or implementation plan.
@@ -250,12 +260,39 @@ Special handling:
 
 - A YAML config can run a directory translation job.
 - The scanner recursively finds supported image files in stable order.
-- Output paths mirror input paths and use the API output format extension.
+- Output paths mirror input paths and follow either the API output format or the configured planned
+  extension, depending on `output.formatFromApi`.
 - The OpenAI-compatible image edit response is parsed and written correctly.
 - Transient failures are retried with backoff.
 - Authentication and permission errors stop the run with a clear error.
 - Interrupted runs can resume without reprocessing completed outputs.
 - Core queue and storage logic can be reused by a future Web UI.
+
+## Future Architecture Considerations
+
+The current implementation assumes one provider and one active API key source per run. A later major
+version may expand this into a dedicated account-scheduling layer.
+
+Expected future direction:
+
+- Support multiple API keys for one provider without breaking the current single-key path.
+- Add explicit key-selection strategies, including primary-with-failover and balanced usage.
+- Allow queue concurrency to scale with the number of healthy available keys rather than treating all
+  requests as if they share one identical credential.
+- Persist masked key identity or key slot metadata per attempt so operators can diagnose routing
+  behavior without exposing raw secrets.
+- Eventually generalize from a single-provider key pool to a multi-provider account pool with health
+  tracking and policy-driven routing.
+
+Design constraints for that future work:
+
+- Key/provider selection should live in a dedicated scheduling module, not inside the low-level image
+  client alone.
+- Secrets must never be written to logs, CLI output, or persisted diagnostic records.
+- Provider-specific request differences should remain below the queue orchestration layer whenever
+  possible.
+- The first implementation step should remain intentionally small: one provider, multiple keys,
+  deterministic rotation.
 
 ## Open Questions
 
@@ -263,6 +300,12 @@ Special handling:
 - Which `gpt-image-2` image parameters are supported by the official/compatible API, especially
   `size`, `quality`, `background`, and `output_format`; supported options are now exposed in config,
   with `auto` values omitted from the request payload.
+- For future multi-key scheduling, should attempt metadata store only a masked key label, or also a
+  separate non-secret logical account id?
+- For future multi-provider support, should provider failover be automatic, policy-driven, or always
+  explicitly configured?
+- For future key balancing, should scheduling remain simple round-robin at first, or account for
+  cooldowns, quotas, and recent rate limits from the beginning?
 - Whether prompt should support per-directory or per-file overrides later.
 - Whether cancellation and pause controls are needed in the first CLI release or only for the future
   Web UI.

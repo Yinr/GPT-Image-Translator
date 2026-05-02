@@ -9,7 +9,11 @@ openai:
   # API 基础地址。可以写到服务根地址或 /v1，程序会自动规范化为 /v1
   baseUrl: http://127.0.0.1:3000/v1
 
-  # API Key 所在的环境变量名。不要把真实 key 写进配置文件
+  # 可直接写 API Key。适合本地私有配置文件。
+  # 若填写此项，程序会优先使用它，而不是 apiKeyEnv。
+  # apiKey: sk-your-key
+
+  # API Key 所在的环境变量名。若未直接填写 apiKey，则会读取这里指定的环境变量。
   apiKeyEnv: OPENAI_API_KEY
 
   # 图片模型。当前已验证：gpt-image-2、gpt-image-2-2k、gpt-image-2-4k
@@ -64,7 +68,8 @@ output:
   # 注意：overwrite 和 skipExisting 不应同时为 true
   overwrite: false
 
-  # 是否使用 API 返回的 output_format 作为输出扩展名。当前建议保持 true
+  # 是否使用 API 返回的 output_format 作为输出扩展名。
+  # 为 false 时，程序会保留按 openai.image.outputFormat 规划出来的目标扩展名。
   formatFromApi: true
 
 # 队列执行配置

@@ -206,3 +206,35 @@ Deno.test("execute omits failed summary when skipped outputs clear runnable fail
   assertEquals(result.runId, "existing-run");
   assertEquals(result.failedJobs?.length, 0);
 });
+
+Deno.test("execute uses configured output format for skipExisting checks", async () => {
+  const inputDir = await Deno.makeTempDir();
+  const outputDir = await Deno.makeTempDir();
+  const stateDir = await Deno.makeTempDir();
+  await Deno.writeFile(join(inputDir, "a.jpg"), new Uint8Array([1]));
+  await Deno.writeFile(join(outputDir, "a.webp"), new Uint8Array([1]));
+
+  const result = await execute({
+    dryRun: false,
+    config: {
+      ...structuredClone(defaultConfig),
+      inputDir,
+      outputDir,
+      prompt: "translate",
+      openai: {
+        ...structuredClone(defaultConfig.openai),
+        image: { ...structuredClone(defaultConfig.openai.image), outputFormat: "webp" },
+      },
+      output: {
+        ...defaultConfig.output,
+        skipExisting: true,
+        overwrite: false,
+        formatFromApi: true,
+      },
+      storage: { sqlitePath: join(stateDir, "translator.db") },
+    },
+  });
+
+  assertEquals(result.skipped, 1);
+  assertEquals(result.pending, 0);
+});

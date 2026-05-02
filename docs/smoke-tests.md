@@ -37,7 +37,9 @@ deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml
 - The request uses `/v1/images/edits`.
 - The response is JSON.
 - The CLI decodes `data[0].b64_json` and writes the output image.
-- The output file extension follows the response `output_format`.
+- With `output.formatFromApi: true`, the output file extension follows response `output_format`.
+- With `output.formatFromApi: false`, the output file extension follows configured
+  `openai.image.outputFormat`.
 - The run can be resumed if the same config hash is used and `queue.resume` is enabled.
 
 ## Failure Signals
@@ -55,5 +57,5 @@ Remove the smoke output directory and state database when you no longer need the
 .local/smoke-test/cli-smoke-state/
 ```
 
-Keep the local API notes in `.local/smoke-test/api-test-notes.md` if they are still useful for manual
-verification.
+Keep the local API notes in `.local/smoke-test/api-test-notes.md` if they are still useful for
+manual verification.
