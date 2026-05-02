@@ -26,7 +26,11 @@ export interface RunJobOptions {
 export interface RunJobResult {
   status: "succeeded" | "retryable" | "failed";
   stopRun: boolean;
+  durationMs: number;
   nextAttemptAt?: string;
+  outputPath?: string;
+  errorType?: string;
+  errorMessage?: string;
 }
 
 export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
@@ -82,7 +86,12 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
       completedAt: finishedAt,
     });
 
-    return { status: "succeeded", stopRun: false };
+    return {
+      status: "succeeded",
+      stopRun: false,
+      durationMs: durationMs(startedAt, finishedAt),
+      outputPath,
+    };
   } catch (error) {
     const finishedAt = now();
     const apiError = normalizeError(error);
@@ -116,7 +125,14 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
       completedAt: status === "failed" ? finishedAt : undefined,
     });
 
-    return { status, stopRun: apiError.info.stopRun, nextAttemptAt };
+    return {
+      status,
+      stopRun: apiError.info.stopRun,
+      durationMs: durationMs(startedAt, finishedAt),
+      nextAttemptAt,
+      errorType: apiError.info.kind,
+      errorMessage: apiError.info.message,
+    };
   }
 }
 

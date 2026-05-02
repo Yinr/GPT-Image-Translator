@@ -496,8 +496,8 @@ Design goals:
 
 ### Task F9: Add Single-Provider Multi-Key Rotation
 
-**Description:** Add the first minimal version of multi-key support for one provider. The initial goal
-is to let one configured provider hold multiple API keys and rotate between them for requests.
+**Description:** Add the first minimal version of multi-key support for one provider. The initial
+goal is to let one configured provider hold multiple API keys and rotate between them for requests.
 
 Initial target behavior:
 
@@ -571,8 +571,8 @@ Behavior notes:
 
 ### Task F11: Enable Concurrency Scheduling by Key Capacity
 
-**Description:** Allow runtime parallelism to scale with available healthy keys so the queue can make
-safe concurrent requests without overloading a single key.
+**Description:** Allow runtime parallelism to scale with available healthy keys so the queue can
+make safe concurrent requests without overloading a single key.
 
 Target behavior:
 

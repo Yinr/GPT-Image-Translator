@@ -7,6 +7,7 @@ Deno.test("parseCliArgs defaults to translate command", () => {
   assertEquals(args.command, "translate");
   assertEquals(args.config, "config.yaml");
   assertEquals(args.dryRun, true);
+  assertEquals(args.help, false);
 });
 
 Deno.test("parseCliArgs parses query subcommands", () => {
@@ -22,4 +23,11 @@ Deno.test("parseCliArgs parses status limit", () => {
 
   assertEquals(args.command, "status");
   assertEquals(args.limit, 5);
+});
+
+Deno.test("parseCliArgs parses help flag", () => {
+  const args = parseCliArgs(["-h"]);
+
+  assertEquals(args.command, "translate");
+  assertEquals(args.help, true);
 });

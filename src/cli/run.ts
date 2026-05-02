@@ -11,10 +11,13 @@ import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
 import { RunStore } from "../storage/run-store.ts";
+import type { ImageEditClientLike } from "../queue/job-runner.ts";
 
 export interface ExecuteOptions {
   config: AppConfig;
   dryRun: boolean;
+  log?: (message: string) => void;
+  client?: ImageEditClientLike;
 }
 
 export interface ExecuteResult {
@@ -38,9 +41,13 @@ export interface ExecuteResult {
 }
 
 export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
+  const log = options.log ?? (() => {});
+  log(`Scanning images in ${options.config.inputDir}`);
   const images = await scanImages(options.config.inputDir, options.config.scan);
+  log(`Found ${images.length} image(s) to consider.`);
 
   if (options.dryRun) {
+    log(`Dry run enabled. Planned ${images.length} job(s) without sending API requests.`);
     return { totalImages: images.length, plannedJobs: images.length };
   }
 
@@ -56,6 +63,11 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const resumable = options.config.queue.resume ? runStore.findResumable(configHash) : undefined;
     const runId = resumable?.id ?? createRunId();
     const resumed = Boolean(resumable);
+    log(
+      resumed
+        ? `Resuming run ${runId}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`
+        : `Starting run ${runId}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`,
+    );
 
     if (!resumable) {
       runStore.create({
@@ -92,7 +104,11 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     });
     runStore.updateCounts(runId);
     const countsBeforeRun = jobStore.countByStatus(runId);
+    log(
+      `Planned jobs: total=${images.length}, pending=${countsBeforeRun.pending}, retryable=${countsBeforeRun.retryable}, skipped=${countsBeforeRun.skipped}, succeeded=${countsBeforeRun.succeeded}, failed=${countsBeforeRun.failed}`,
+    );
     if (countsBeforeRun.pending + countsBeforeRun.retryable === 0) {
+      log(`No runnable jobs remain for run ${runId}. Marking run as completed.`);
       runStore.updateStatus(runId, "completed", nowIso());
       return {
         runId,
@@ -118,11 +134,38 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       failFast: options.config.queue.failFast,
       formatFromApi: options.config.output.formatFromApi,
       retry: options.config.retry,
-      client: createOpenAIImageClient(options.config.openai),
+      client: options.client ?? createOpenAIImageClient(options.config.openai),
       runStore,
       jobStore,
       attemptStore,
       outputStore,
+      onJobStart: ({ job, attemptNo }) => {
+        log(`Starting job ${attemptNo} for ${job.inputPath}`);
+      },
+      onJobFinish: ({ job, result }) => {
+        const duration = formatDuration(result.durationMs);
+        if (result.status === "succeeded") {
+          log(
+            `Completed ${job.inputPath} -> ${result.outputPath ?? job.outputPath} in ${duration}`,
+          );
+          return;
+        }
+
+        if (result.status === "retryable") {
+          log(
+            `Will retry ${job.inputPath} after ${duration} [${result.errorType ?? "unknown"}] ${
+              result.errorMessage ?? ""
+            }`.trim(),
+          );
+          return;
+        }
+
+        log(
+          `Failed ${job.inputPath} after ${duration} [${result.errorType ?? "unknown"}] ${
+            result.errorMessage ?? ""
+          }`.trim(),
+        );
+      },
     });
     const counts = jobStore.countByStatus(runId);
     const failedJobs = jobStore.listFailedByRun(runId).map((job) => ({
@@ -149,6 +192,17 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
   } finally {
     db.close();
   }
+}
+
+function formatDuration(durationMs: number | undefined): string {
+  if (!durationMs || durationMs < 1000) return `${durationMs ?? 0}ms`;
+
+  const totalSeconds = durationMs / 1000;
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  return `${minutes}m ${seconds}s`;
 }
 
 function shouldSkipExisting(outputPath: string, output: AppConfig["output"]): boolean {

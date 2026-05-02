@@ -1,5 +1,5 @@
 import { loadConfig } from "./config/load.ts";
-import { parseCliArgs } from "./cli/args.ts";
+import { HELP_TEXT, parseCliArgs } from "./cli/args.ts";
 import { execute, type ExecuteResult } from "./cli/run.ts";
 import { runFailedCommand, runInspectCommand, runStatusCommand } from "./cli/query-commands.ts";
 import type { JobDetail, RunDetail } from "./services/run-query.ts";
@@ -11,6 +11,11 @@ if (import.meta.main) {
 
 export async function main(args: string[]): Promise<void> {
   const cli = parseCliArgs(args);
+  if (cli.help) {
+    printHelp();
+    return;
+  }
+
   const configPath = cli.config;
   if (!configPath) {
     printHelp();
@@ -38,18 +43,18 @@ export async function main(args: string[]): Promise<void> {
     return;
   }
 
-  const result = await execute({ config, dryRun: cli.dryRun });
   console.log(`Loaded config: ${configPath}`);
+  const result = await execute({
+    config,
+    dryRun: cli.dryRun,
+    log: (message) => console.log(message),
+  });
   printSummary(result, cli.dryRun);
   console.log(JSON.stringify(result, null, 2));
 }
 
 function printHelp(): void {
-  console.log(`Usage:
-  deno task translate --config ./config.example.yaml [--dry-run]
-  deno task translate status --config ./config.example.yaml [--limit 20]
-  deno task translate inspect --config ./config.example.yaml --run <runId>
-  deno task translate failed --config ./config.example.yaml --run <runId>`);
+  console.log(HELP_TEXT);
 }
 
 function printSummary(result: ExecuteResult, dryRun: boolean): void {

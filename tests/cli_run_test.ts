@@ -3,6 +3,7 @@ import { join } from "@std/path";
 import { execute } from "../src/cli/run.ts";
 import { defaultConfig } from "../src/config/defaults.ts";
 import { createConfigHash } from "../src/core/run-id.ts";
+import type { ImageEditClientLike } from "../src/queue/job-runner.ts";
 import { openDatabase } from "../src/storage/db.ts";
 import { JobStore } from "../src/storage/job-store.ts";
 import { RunStore } from "../src/storage/run-store.ts";
@@ -15,8 +16,10 @@ Deno.test("execute dry-run scans images without creating a database", async () =
   await Deno.writeFile(join(inputDir, "nested", "a.jpg"), new Uint8Array([1]));
   await Deno.writeTextFile(join(inputDir, "ignored.txt"), "ignored");
 
+  const logs: string[] = [];
   const result = await execute({
     dryRun: true,
+    log: (message) => logs.push(message),
     config: {
       ...structuredClone(defaultConfig),
       inputDir,
@@ -28,6 +31,45 @@ Deno.test("execute dry-run scans images without creating a database", async () =
 
   assertEquals(result.totalImages, 1);
   assertEquals(result.plannedJobs, 1);
+  assertEquals(logs[0], `Scanning images in ${inputDir}`);
+  assertEquals(logs[1], "Found 1 image(s) to consider.");
+});
+
+Deno.test("execute logs planning and job progress", async () => {
+  const inputDir = await Deno.makeTempDir();
+  const outputDir = await Deno.makeTempDir();
+  const stateDir = await Deno.makeTempDir();
+  await Deno.writeFile(join(inputDir, "a.jpg"), new Uint8Array([1]));
+
+  const logs: string[] = [];
+  const client: ImageEditClientLike = {
+    editImage: () => Promise.resolve({ bytes: new Uint8Array([1]), outputFormat: "png" }),
+  };
+  const result = await execute({
+    dryRun: false,
+    log: (message) => logs.push(message),
+    client,
+    config: {
+      ...structuredClone(defaultConfig),
+      inputDir,
+      outputDir,
+      prompt: "translate",
+      storage: { sqlitePath: join(stateDir, "translator.db") },
+    },
+  });
+
+  assertEquals(result.succeeded, 1);
+  assertEquals(logs.some((message) => message === `Scanning images in ${inputDir}`), true);
+  assertEquals(logs.some((message) => message.startsWith("Starting run ")), true);
+  assertEquals(logs.some((message) => message.includes("Planned jobs: total=1")), true);
+  assertEquals(
+    logs.some((message) => message.includes(`Starting job 1 for ${join(inputDir, "a.jpg")}`)),
+    true,
+  );
+  assertEquals(
+    logs.some((message) => message.includes(`Completed ${join(inputDir, "a.jpg")}`)),
+    true,
+  );
 });
 
 Deno.test("execute reuses resumable run when resume is enabled", async () => {

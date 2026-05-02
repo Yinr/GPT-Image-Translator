@@ -19,6 +19,8 @@ export interface QueueRunnerOptions {
   jobStore: JobStore;
   attemptStore: AttemptStore;
   outputStore: OutputStore;
+  onJobStart?: (event: { job: JobRecord; attemptNo: number }) => void;
+  onJobFinish?: (event: { job: JobRecord; result: Awaited<ReturnType<typeof runJob>> }) => void;
   now?: () => string;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -86,7 +88,8 @@ async function runOneJob(
 ) {
   if (options.minDelayMs > 0) await sleepImpl(options.minDelayMs);
 
-  return await runJob({
+  options.onJobStart?.({ job, attemptNo: job.attempts + 1 });
+  const result = await runJob({
     job,
     prompt: options.prompt,
     formatFromApi: options.formatFromApi,
@@ -97,4 +100,7 @@ async function runOneJob(
     outputStore: options.outputStore,
     now: options.now,
   });
+
+  options.onJobFinish?.({ job, result });
+  return result;
 }

@@ -277,8 +277,8 @@ Expected future direction:
 
 - Support multiple API keys for one provider without breaking the current single-key path.
 - Add explicit key-selection strategies, including primary-with-failover and balanced usage.
-- Allow queue concurrency to scale with the number of healthy available keys rather than treating all
-  requests as if they share one identical credential.
+- Allow queue concurrency to scale with the number of healthy available keys rather than treating
+  all requests as if they share one identical credential.
 - Persist masked key identity or key slot metadata per attempt so operators can diagnose routing
   behavior without exposing raw secrets.
 - Eventually generalize from a single-provider key pool to a multi-provider account pool with health
@@ -286,8 +286,8 @@ Expected future direction:
 
 Design constraints for that future work:
 
-- Key/provider selection should live in a dedicated scheduling module, not inside the low-level image
-  client alone.
+- Key/provider selection should live in a dedicated scheduling module, not inside the low-level
+  image client alone.
 - Secrets must never be written to logs, CLI output, or persisted diagnostic records.
 - Provider-specific request differences should remain below the queue orchestration layer whenever
   possible.
