@@ -63,11 +63,13 @@ Deno.test("execute logs planning and job progress", async () => {
   assertEquals(logs.some((message) => message.startsWith("Starting run ")), true);
   assertEquals(logs.some((message) => message.includes("Planned jobs: total=1")), true);
   assertEquals(
-    logs.some((message) => message.includes(`Starting job 1 for ${join(inputDir, "a.jpg")}`)),
+    logs.some((message) =>
+      message.includes(`Starting [1/1] attempt 1 for ${join(inputDir, "a.jpg")}`)
+    ),
     true,
   );
   assertEquals(
-    logs.some((message) => message.includes(`Completed ${join(inputDir, "a.jpg")}`)),
+    logs.some((message) => message.includes(`Completed [1/1] ${join(inputDir, "a.jpg")}`)),
     true,
   );
 });

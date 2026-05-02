@@ -104,10 +104,11 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     });
     runStore.updateCounts(runId);
     const countsBeforeRun = jobStore.countByStatus(runId);
+    const runnableJobs = countsBeforeRun.pending + countsBeforeRun.retryable;
     log(
       `Planned jobs: total=${images.length}, pending=${countsBeforeRun.pending}, retryable=${countsBeforeRun.retryable}, skipped=${countsBeforeRun.skipped}, succeeded=${countsBeforeRun.succeeded}, failed=${countsBeforeRun.failed}`,
     );
-    if (countsBeforeRun.pending + countsBeforeRun.retryable === 0) {
+    if (runnableJobs === 0) {
       log(`No runnable jobs remain for run ${runId}. Marking run as completed.`);
       runStore.updateStatus(runId, "completed", nowIso());
       return {
@@ -126,6 +127,9 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       };
     }
 
+    let startedJobs = 0;
+    let finishedJobs = 0;
+
     const summary = await runQueue({
       runId,
       prompt: options.config.prompt,
@@ -140,30 +144,34 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       attemptStore,
       outputStore,
       onJobStart: ({ job, attemptNo }) => {
-        log(`Starting job ${attemptNo} for ${job.inputPath}`);
+        startedJobs += 1;
+        log(`Starting [${startedJobs}/${runnableJobs}] attempt ${attemptNo} for ${job.inputPath}`);
       },
       onJobFinish: ({ job, result }) => {
+        finishedJobs += 1;
         const duration = formatDuration(result.durationMs);
         if (result.status === "succeeded") {
           log(
-            `Completed ${job.inputPath} -> ${result.outputPath ?? job.outputPath} in ${duration}`,
+            `Completed [${finishedJobs}/${runnableJobs}] ${job.inputPath} -> ${
+              result.outputPath ?? job.outputPath
+            } in ${duration}`,
           );
           return;
         }
 
         if (result.status === "retryable") {
           log(
-            `Will retry ${job.inputPath} after ${duration} [${result.errorType ?? "unknown"}] ${
-              result.errorMessage ?? ""
-            }`.trim(),
+            `Will retry [${finishedJobs}/${runnableJobs}] ${job.inputPath} after ${duration} [${
+              result.errorType ?? "unknown"
+            }] ${result.errorMessage ?? ""}`.trim(),
           );
           return;
         }
 
         log(
-          `Failed ${job.inputPath} after ${duration} [${result.errorType ?? "unknown"}] ${
-            result.errorMessage ?? ""
-          }`.trim(),
+          `Failed [${finishedJobs}/${runnableJobs}] ${job.inputPath} after ${duration} [${
+            result.errorType ?? "unknown"
+          }] ${result.errorMessage ?? ""}`.trim(),
         );
       },
     });
