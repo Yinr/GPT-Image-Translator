@@ -9,6 +9,7 @@ import { RunStore } from "../src/storage/run-store.ts";
 import { JobStore } from "../src/storage/job-store.ts";
 import { AttemptStore } from "../src/storage/attempt-store.ts";
 import { OutputStore } from "../src/storage/output-store.ts";
+import { ProcessingMetadataStore } from "../src/storage/processing-metadata-store.ts";
 
 const retry: RetryConfig = {
   maxAttempts: 3,
@@ -35,6 +36,7 @@ Deno.test("runJob writes output and marks job succeeded", async () => {
       jobStore: context.jobs,
       attemptStore: context.attempts,
       outputStore: context.outputs,
+      processingMetadataStore: context.processingMetadata,
       now: fixedClock(),
     });
 
@@ -76,6 +78,7 @@ Deno.test("runJob writes using API output format and updates job output path", a
       jobStore: context.jobs,
       attemptStore: context.attempts,
       outputStore: context.outputs,
+      processingMetadataStore: context.processingMetadata,
       now: fixedClock(),
     });
 
@@ -110,6 +113,7 @@ Deno.test("runJob preserves planned output path when formatFromApi is false", as
       jobStore: context.jobs,
       attemptStore: context.attempts,
       outputStore: context.outputs,
+      processingMetadataStore: context.processingMetadata,
       now: fixedClock(),
     });
 
@@ -165,6 +169,7 @@ Deno.test("runJob sends padded image and selected size when aspectPad is enabled
       jobStore: context.jobs,
       attemptStore: context.attempts,
       outputStore: context.outputs,
+      processingMetadataStore: context.processingMetadata,
       now: fixedClock(),
     });
 
@@ -211,12 +216,14 @@ Deno.test("runJob crops final output and preserves uncropped output when crop-ba
       jobStore: context.jobs,
       attemptStore: context.attempts,
       outputStore: context.outputs,
+      processingMetadataStore: context.processingMetadata,
       now: fixedClock(),
     });
 
     const final = await Image.decode(await Deno.readFile(outputPath));
     const uncropped = await Image.decode(await Deno.readFile(intermediatePath));
     const outputs = context.outputs.listByJob(job.id);
+    const processing = context.processingMetadata.getByJob(job.id);
 
     assertEquals(final.width, 800);
     assertEquals(final.height, 1000);
@@ -225,6 +232,17 @@ Deno.test("runJob crops final output and preserves uncropped output when crop-ba
     assertEquals(uncropped.height, 1200);
     assertEquals(outputs.length, 1);
     assertEquals(outputs[0].outputPath, outputPath);
+    assertExists(processing);
+    assertEquals(processing.enabled, true);
+    assertEquals(processing.apiSize, "1024x1536");
+    assertEquals(processing.sourceWidth, 800);
+    assertEquals(processing.sourceHeight, 1000);
+    assertEquals(processing.canvasWidth, 800);
+    assertEquals(processing.canvasHeight, 1200);
+    assertEquals(processing.sourceRectY, 100);
+    assertEquals(processing.fill, "white");
+    assertEquals(processing.cropBackToOriginal, true);
+    assertEquals(processing.uncroppedOutputPath, intermediatePath);
   } finally {
     context.db.close();
   }
@@ -326,6 +344,7 @@ function createContext() {
   const jobs = new JobStore(db);
   const attempts = new AttemptStore(db);
   const outputs = new OutputStore(db);
+  const processingMetadata = new ProcessingMetadataStore(db);
   runs.create({
     id: "run-1",
     status: "running",
@@ -338,7 +357,7 @@ function createContext() {
     failedJobs: 0,
     skippedJobs: 0,
   });
-  return { db, runs, jobs, attempts, outputs };
+  return { db, runs, jobs, attempts, outputs, processingMetadata };
 }
 
 function createJob(

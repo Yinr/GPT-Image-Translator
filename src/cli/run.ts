@@ -11,6 +11,7 @@ import { openDatabase } from "../storage/db.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
+import { ProcessingMetadataStore } from "../storage/processing-metadata-store.ts";
 import { RunStore } from "../storage/run-store.ts";
 import type { ImageEditClientLike } from "../queue/job-runner.ts";
 
@@ -59,6 +60,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const jobStore = new JobStore(db);
     const attemptStore = new AttemptStore(db);
     const outputStore = new OutputStore(db);
+    const processingMetadataStore = new ProcessingMetadataStore(db);
 
     const configHash = await createConfigHash(options.config);
     const resumable = options.config.queue.resume ? runStore.findResumable(configHash) : undefined;
@@ -165,6 +167,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       jobStore,
       attemptStore,
       outputStore,
+      processingMetadataStore,
       onJobStart: async ({ job, attemptNo }) => {
         startedJobs += 1;
         log(`Starting [${startedJobs}/${runnableJobs}] attempt ${attemptNo} for ${job.inputPath}`);

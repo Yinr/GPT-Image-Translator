@@ -14,6 +14,7 @@ import { getRetryDecision } from "../openai/retry-policy.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
+import { ProcessingMetadataStore } from "../storage/processing-metadata-store.ts";
 
 export interface ImageEditClientLike {
   editImage(request: ImageEditRequest): Promise<ImageEditResult>;
@@ -28,6 +29,7 @@ export interface RunJobOptions {
   jobStore: JobStore;
   attemptStore: AttemptStore;
   outputStore: OutputStore;
+  processingMetadataStore?: ProcessingMetadataStore;
   aspectPad?: AspectPadConfig;
   outputDir?: string;
   now?: () => string;
@@ -46,9 +48,25 @@ export interface RunJobResult {
 interface PreparedAttempt {
   imagePath: string;
   size?: ImageEditRequest["size"];
+  metadata?: ProcessingAttemptMetadata;
   cropBack?: (bytes: Uint8Array) => Promise<Uint8Array>;
   uncroppedOutputPath?: string;
   cleanup: () => Promise<void>;
+}
+
+interface ProcessingAttemptMetadata {
+  apiSize: NonNullable<ImageEditRequest["size"]>;
+  sourceWidth: number;
+  sourceHeight: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  sourceRectX: number;
+  sourceRectY: number;
+  sourceRectWidth: number;
+  sourceRectHeight: number;
+  fill: AspectPadConfig["fill"];
+  cropBackToOriginal: boolean;
+  uncroppedOutputPath?: string;
 }
 
 export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
@@ -85,6 +103,26 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
     await writeImageOutput(outputPath, outputBytes);
 
     const finishedAt = now();
+    if (prepared.metadata && options.processingMetadataStore) {
+      options.processingMetadataStore.create({
+        id: crypto.randomUUID(),
+        jobId: options.job.id,
+        enabled: true,
+        apiSize: prepared.metadata.apiSize,
+        sourceWidth: prepared.metadata.sourceWidth,
+        sourceHeight: prepared.metadata.sourceHeight,
+        canvasWidth: prepared.metadata.canvasWidth,
+        canvasHeight: prepared.metadata.canvasHeight,
+        sourceRectX: prepared.metadata.sourceRectX,
+        sourceRectY: prepared.metadata.sourceRectY,
+        sourceRectWidth: prepared.metadata.sourceRectWidth,
+        sourceRectHeight: prepared.metadata.sourceRectHeight,
+        fill: prepared.metadata.fill,
+        cropBackToOriginal: prepared.metadata.cropBackToOriginal,
+        uncroppedOutputPath: prepared.metadata.uncroppedOutputPath,
+        createdAt: finishedAt,
+      });
+    }
     options.outputStore.create({
       id: crypto.randomUUID(),
       jobId: options.job.id,
@@ -186,6 +224,26 @@ async function prepareAttempt(options: RunJobOptions): Promise<PreparedAttempt> 
   return {
     imagePath: prepared.imagePath,
     size: prepared.plan.apiSize,
+    metadata: {
+      apiSize: prepared.plan.apiSize,
+      sourceWidth: prepared.plan.source.width,
+      sourceHeight: prepared.plan.source.height,
+      canvasWidth: prepared.plan.canvas.width,
+      canvasHeight: prepared.plan.canvas.height,
+      sourceRectX: prepared.plan.sourceRect.x,
+      sourceRectY: prepared.plan.sourceRect.y,
+      sourceRectWidth: prepared.plan.sourceRect.width,
+      sourceRectHeight: prepared.plan.sourceRect.height,
+      fill: options.aspectPad.fill,
+      cropBackToOriginal: options.aspectPad.cropBackToOriginal,
+      uncroppedOutputPath: options.aspectPad.cropBackToOriginal
+        ? intermediateOutputPath(
+          options.outputDir!,
+          options.aspectPad.intermediateDir,
+          options.job.outputPath,
+        )
+        : undefined,
+    },
     cropBack: options.aspectPad.cropBackToOriginal
       ? (bytes) => cropApiOutputToOriginal({ apiOutputBytes: bytes, plan: prepared.plan })
       : undefined,

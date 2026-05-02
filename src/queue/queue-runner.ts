@@ -3,6 +3,7 @@ import { sleep } from "../shared/time.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
+import { ProcessingMetadataStore } from "../storage/processing-metadata-store.ts";
 import { RunStore } from "../storage/run-store.ts";
 import { type ImageEditClientLike, runJob } from "./job-runner.ts";
 
@@ -21,6 +22,7 @@ export interface QueueRunnerOptions {
   jobStore: JobStore;
   attemptStore: AttemptStore;
   outputStore: OutputStore;
+  processingMetadataStore?: ProcessingMetadataStore;
   onJobStart?: (event: { job: JobRecord; attemptNo: number }) => void | Promise<void>;
   onJobFinish?: (event: {
     job: JobRecord;
@@ -105,6 +107,7 @@ async function runOneJob(
     jobStore: options.jobStore,
     attemptStore: options.attemptStore,
     outputStore: options.outputStore,
+    processingMetadataStore: options.processingMetadataStore,
     now: options.now,
   });
 

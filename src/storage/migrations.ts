@@ -75,4 +75,30 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_outputs_job_id ON outputs(job_id);
     `,
   },
+  {
+    version: 2,
+    sql: `
+      CREATE TABLE processing_metadata (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL UNIQUE,
+        enabled INTEGER NOT NULL,
+        api_size TEXT,
+        source_width INTEGER,
+        source_height INTEGER,
+        canvas_width INTEGER,
+        canvas_height INTEGER,
+        source_rect_x INTEGER,
+        source_rect_y INTEGER,
+        source_rect_width INTEGER,
+        source_rect_height INTEGER,
+        fill TEXT,
+        crop_back_to_original INTEGER NOT NULL,
+        uncropped_output_path TEXT,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX idx_processing_metadata_job_id ON processing_metadata(job_id);
+    `,
+  },
 ];

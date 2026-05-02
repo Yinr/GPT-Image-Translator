@@ -4,6 +4,7 @@ import { RunStore } from "../src/storage/run-store.ts";
 import { JobStore } from "../src/storage/job-store.ts";
 import { AttemptStore } from "../src/storage/attempt-store.ts";
 import { OutputStore } from "../src/storage/output-store.ts";
+import { ProcessingMetadataStore } from "../src/storage/processing-metadata-store.ts";
 import { RunQueryService } from "../src/services/run-query.ts";
 
 Deno.test("RunQueryService returns run details with jobs, attempts, and outputs", () => {
@@ -13,7 +14,8 @@ Deno.test("RunQueryService returns run details with jobs, attempts, and outputs"
     const jobs = new JobStore(db);
     const attempts = new AttemptStore(db);
     const outputs = new OutputStore(db);
-    const service = new RunQueryService(runs, jobs, attempts, outputs);
+    const processing = new ProcessingMetadataStore(db);
+    const service = new RunQueryService(runs, jobs, attempts, outputs, processing);
     const now = "2026-05-01T00:00:00.000Z";
 
     runs.create({
@@ -60,6 +62,24 @@ Deno.test("RunQueryService returns run details with jobs, attempts, and outputs"
       byteCount: 1,
       createdAt: now,
     });
+    processing.create({
+      id: "processing-1",
+      jobId: "job-1",
+      enabled: true,
+      apiSize: "1024x1536",
+      sourceWidth: 800,
+      sourceHeight: 1000,
+      canvasWidth: 800,
+      canvasHeight: 1200,
+      sourceRectX: 0,
+      sourceRectY: 100,
+      sourceRectWidth: 800,
+      sourceRectHeight: 1000,
+      fill: "white",
+      cropBackToOriginal: true,
+      uncroppedOutputPath: "/output/.intermediate/a.png",
+      createdAt: now,
+    });
 
     const detail = service.getRunDetail("run-1");
 
@@ -67,6 +87,14 @@ Deno.test("RunQueryService returns run details with jobs, attempts, and outputs"
     assertEquals(detail.jobs.length, 1);
     assertEquals(detail.jobs[0].attempts.length, 1);
     assertEquals(detail.jobs[0].output?.outputFormat, "png");
+    assertEquals(detail.jobs[0].processing?.enabled, true);
+    assertEquals(detail.jobs[0].processing?.apiSize, "1024x1536");
+    assertEquals(detail.jobs[0].processing?.source, { width: 800, height: 1000 });
+    assertEquals(detail.jobs[0].processing?.canvas, { width: 800, height: 1200 });
+    assertEquals(detail.jobs[0].processing?.sourceRect, { x: 0, y: 100, width: 800, height: 1000 });
+    assertEquals(detail.jobs[0].processing?.fill, "white");
+    assertEquals(detail.jobs[0].processing?.cropBackToOriginal, true);
+    assertEquals(detail.jobs[0].processing?.uncroppedOutputPath, "/output/.intermediate/a.png");
   } finally {
     db.close();
   }

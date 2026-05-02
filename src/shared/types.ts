@@ -211,3 +211,22 @@ export interface OutputRecord {
   usageJson?: string;
   createdAt: string;
 }
+
+export interface ProcessingMetadataRecord {
+  id: string;
+  jobId: string;
+  enabled: boolean;
+  apiSize?: OpenAIImageSize;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
+  sourceRectX?: number;
+  sourceRectY?: number;
+  sourceRectWidth?: number;
+  sourceRectHeight?: number;
+  fill?: AspectPadFill;
+  cropBackToOriginal: boolean;
+  uncroppedOutputPath?: string;
+  createdAt: string;
+}

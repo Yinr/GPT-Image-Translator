@@ -1,4 +1,10 @@
-import type { AttemptRecord, JobRecord, OutputRecord, RunRecord } from "../shared/types.ts";
+import type {
+  AttemptRecord,
+  JobRecord,
+  OutputRecord,
+  ProcessingMetadataRecord,
+  RunRecord,
+} from "../shared/types.ts";
 
 type Row = Record<string, unknown>;
 
@@ -66,6 +72,27 @@ export function mapOutput(row: Row): OutputRecord {
   };
 }
 
+export function mapProcessingMetadata(row: Row): ProcessingMetadataRecord {
+  return {
+    id: stringValue(row.id),
+    jobId: stringValue(row.job_id),
+    enabled: booleanValue(row.enabled),
+    apiSize: optionalString(row.api_size) as ProcessingMetadataRecord["apiSize"],
+    sourceWidth: optionalNumber(row.source_width),
+    sourceHeight: optionalNumber(row.source_height),
+    canvasWidth: optionalNumber(row.canvas_width),
+    canvasHeight: optionalNumber(row.canvas_height),
+    sourceRectX: optionalNumber(row.source_rect_x),
+    sourceRectY: optionalNumber(row.source_rect_y),
+    sourceRectWidth: optionalNumber(row.source_rect_width),
+    sourceRectHeight: optionalNumber(row.source_rect_height),
+    fill: optionalString(row.fill) as ProcessingMetadataRecord["fill"],
+    cropBackToOriginal: booleanValue(row.crop_back_to_original),
+    uncroppedOutputPath: optionalString(row.uncropped_output_path),
+    createdAt: stringValue(row.created_at),
+  };
+}
+
 function stringValue(value: unknown): string {
   if (typeof value !== "string") throw new Error("Expected string database value");
   return value;
@@ -82,4 +109,9 @@ function numberValue(value: unknown): number {
 
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === "number" ? value : undefined;
+}
+
+function booleanValue(value: unknown): boolean {
+  if (typeof value !== "number") throw new Error("Expected boolean database value");
+  return value !== 0;
 }

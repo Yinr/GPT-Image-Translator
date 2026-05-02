@@ -408,16 +408,19 @@ Status: implemented.
 **Description:** Add CLI/query visibility for preprocessing decisions so users can diagnose why a
 given output used a particular canvas size or crop behavior.
 
+Status: implemented.
+
 **Acceptance criteria:**
 
-- Job inspection shows whether preprocessing was enabled.
-- Job inspection shows selected API size and crop-back status when available.
-- Failed preprocessing errors are clear and non-retryable unless caused by transient filesystem
-  issues.
+- [x] Job inspection shows whether preprocessing was enabled.
+- [x] Job inspection shows selected API size and crop-back status when available.
+- [x] Failed preprocessing errors are clear and non-retryable unless caused by transient filesystem
+      issues.
 
 **Verification:**
 
 - `deno test tests/query_commands_test.ts tests/run_query_service_test.ts`
+- `deno test tests/storage_test.ts tests/job_runner_test.ts`
 - Manual CLI inspection of a preprocessed run.
 
 **Files likely touched:**
