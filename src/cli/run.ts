@@ -157,6 +157,8 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       minDelayMs: options.config.queue.minDelayMs,
       failFast: options.config.queue.failFast,
       formatFromApi: options.config.output.formatFromApi,
+      outputDir: options.config.outputDir,
+      aspectPad: options.config.preprocess.aspectPad,
       retry: options.config.retry,
       client: options.client ?? createOpenAIImageClient(options.config.openai),
       runStore,

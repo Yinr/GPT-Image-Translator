@@ -374,14 +374,17 @@ Processing flow:
 **Description:** Wire aspect-ratio preprocessing into job execution while preserving current
 behavior when disabled.
 
+Status: implemented.
+
 **Acceptance criteria:**
 
-- Disabled preprocessing leaves existing request and output behavior unchanged.
-- Enabled preprocessing sends the padded image path to the OpenAI client.
-- Enabled preprocessing sets request `size` to the planner-selected API size.
-- Crop-back mode writes the final cropped output to the normal output path.
-- Crop-back mode also preserves the uncropped API output in the intermediate directory.
-- Attempts and output metadata clearly identify final output and any preserved intermediate output.
+- [x] Disabled preprocessing leaves existing request and output behavior unchanged.
+- [x] Enabled preprocessing sends the padded image path to the OpenAI client.
+- [x] Enabled preprocessing sets request `size` to the planner-selected API size.
+- [x] Crop-back mode writes the final cropped output to the normal output path.
+- [x] Crop-back mode also preserves the uncropped API output in the intermediate directory.
+- [ ] Attempts and output metadata clearly identify final output and any preserved intermediate
+      output. This is deferred to F6 because it requires query/storage visibility changes.
 
 **Verification:**
 

@@ -1,4 +1,12 @@
-import type { ImageEditRequest, ImageEditResult, JobRecord, RetryConfig } from "../shared/types.ts";
+import { join, relative } from "@std/path";
+import type {
+  AspectPadConfig,
+  ImageEditRequest,
+  ImageEditResult,
+  JobRecord,
+  RetryConfig,
+} from "../shared/types.ts";
+import { cropApiOutputToOriginal, prepareAspectPaddedImage } from "../core/image-preprocessor.ts";
 import { withOutputFormat } from "../fs/output-path.ts";
 import { writeImageOutput } from "../fs/writer.ts";
 import { ApiError } from "../openai/error-classifier.ts";
@@ -20,6 +28,8 @@ export interface RunJobOptions {
   jobStore: JobStore;
   attemptStore: AttemptStore;
   outputStore: OutputStore;
+  aspectPad?: AspectPadConfig;
+  outputDir?: string;
   now?: () => string;
 }
 
@@ -31,6 +41,14 @@ export interface RunJobResult {
   outputPath?: string;
   errorType?: string;
   errorMessage?: string;
+}
+
+interface PreparedAttempt {
+  imagePath: string;
+  size?: ImageEditRequest["size"];
+  cropBack?: (bytes: Uint8Array) => Promise<Uint8Array>;
+  uncroppedOutputPath?: string;
+  cleanup: () => Promise<void>;
 }
 
 export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
@@ -46,14 +64,25 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
   });
 
   try {
-    const result = await options.client.editImage({
-      imagePath: options.job.inputPath,
-      prompt: options.prompt,
-    });
+    const prepared = await prepareAttempt(options);
+    let result: ImageEditResult;
+    try {
+      result = await options.client.editImage({
+        imagePath: prepared.imagePath,
+        prompt: options.prompt,
+        size: prepared.size,
+      });
+    } finally {
+      await prepared.cleanup();
+    }
     const outputPath = options.formatFromApi
       ? withOutputFormat(options.job.outputPath, result.outputFormat)
       : options.job.outputPath;
-    await writeImageOutput(outputPath, result.bytes);
+    const outputBytes = prepared.cropBack ? await prepared.cropBack(result.bytes) : result.bytes;
+    if (prepared.uncroppedOutputPath) {
+      await writeImageOutput(prepared.uncroppedOutputPath, result.bytes);
+    }
+    await writeImageOutput(outputPath, outputBytes);
 
     const finishedAt = now();
     options.outputStore.create({
@@ -63,7 +92,7 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
       outputFormat: result.outputFormat,
       width: result.width,
       height: result.height,
-      byteCount: result.byteCount ?? result.bytes.byteLength,
+      byteCount: outputBytes.byteLength,
       revisedPrompt: result.revisedPrompt,
       usageJson: result.usage === undefined ? undefined : JSON.stringify(result.usage),
       createdAt: finishedAt,
@@ -134,6 +163,49 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
       errorMessage: apiError.info.message,
     };
   }
+}
+
+async function prepareAttempt(options: RunJobOptions): Promise<PreparedAttempt> {
+  if (!options.aspectPad?.enabled) {
+    return {
+      imagePath: options.job.inputPath,
+      cleanup: () => Promise.resolve(),
+    };
+  }
+
+  if (options.aspectPad.cropBackToOriginal && !options.outputDir) {
+    throw new Error("outputDir is required when aspectPad.cropBackToOriginal is enabled");
+  }
+
+  const prepared = await prepareAspectPaddedImage({
+    inputPath: options.job.inputPath,
+    outputPath: options.job.outputPath,
+    fill: options.aspectPad.fill,
+  });
+
+  return {
+    imagePath: prepared.imagePath,
+    size: prepared.plan.apiSize,
+    cropBack: options.aspectPad.cropBackToOriginal
+      ? (bytes) => cropApiOutputToOriginal({ apiOutputBytes: bytes, plan: prepared.plan })
+      : undefined,
+    uncroppedOutputPath: options.aspectPad.cropBackToOriginal
+      ? intermediateOutputPath(
+        options.outputDir!,
+        options.aspectPad.intermediateDir,
+        options.job.outputPath,
+      )
+      : undefined,
+    cleanup: prepared.cleanup,
+  };
+}
+
+function intermediateOutputPath(
+  outputDir: string,
+  intermediateDir: string,
+  outputPath: string,
+): string {
+  return join(outputDir, intermediateDir, relative(outputDir, outputPath));
 }
 
 function normalizeError(error: unknown): ApiError {

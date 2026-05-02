@@ -1,5 +1,6 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { join } from "@std/path";
+import { Image } from "@matmen/imagescript";
 import { type ImageEditClientLike, runJob } from "../src/queue/job-runner.ts";
 import { ApiError } from "../src/openai/error-classifier.ts";
 import type { JobRecord, RetryConfig } from "../src/shared/types.ts";
@@ -120,6 +121,110 @@ Deno.test("runJob preserves planned output path when formatFromApi is false", as
     assertEquals(updated?.outputPath, plannedOutputPath);
     assertEquals(outputs[0].outputPath, plannedOutputPath);
     assertEquals(outputs[0].outputFormat, "png");
+  } finally {
+    context.db.close();
+  }
+});
+
+Deno.test("runJob sends padded image and selected size when aspectPad is enabled", async () => {
+  const context = createContext();
+  try {
+    const dir = await Deno.makeTempDir();
+    const inputPath = join(dir, "input.png");
+    const outputPath = join(dir, "output.png");
+    await writeSolidImage(inputPath, 800, 1000, 0x43a047ff);
+    let requestPath = "";
+    let requestSize = "";
+    const client: ImageEditClientLike = {
+      editImage: async (request) => {
+        requestPath = request.imagePath;
+        requestSize = request.size ?? "";
+        const image = await Image.decode(await Deno.readFile(request.imagePath));
+        assertEquals(image.width, 800);
+        assertEquals(image.height, 1200);
+        assertEquals(image.getPixelAt(1, 1), 0x00000000);
+        assertEquals(image.getPixelAt(1, 101), 0x43a047ff);
+        return { bytes: new Uint8Array([5]), outputFormat: "png" };
+      },
+    };
+    const job = createJob(context, { inputPath, outputPath });
+
+    await runJob({
+      job,
+      prompt: "translate",
+      formatFromApi: true,
+      aspectPad: {
+        enabled: true,
+        fill: "transparent",
+        cropBackToOriginal: false,
+        intermediateDir: ".intermediate",
+      },
+      outputDir: dir,
+      retry,
+      client,
+      jobStore: context.jobs,
+      attemptStore: context.attempts,
+      outputStore: context.outputs,
+      now: fixedClock(),
+    });
+
+    assertEquals(requestSize, "1024x1536");
+    assertEquals(requestPath.endsWith(".preprocess.png"), true);
+    await assertNotFound(requestPath);
+    assertEquals([...await Deno.readFile(outputPath)], [5]);
+  } finally {
+    context.db.close();
+  }
+});
+
+Deno.test("runJob crops final output and preserves uncropped output when crop-back is enabled", async () => {
+  const context = createContext();
+  try {
+    const dir = await Deno.makeTempDir();
+    const inputPath = join(dir, "input.png");
+    const outputPath = join(dir, "nested", "output.png");
+    const intermediatePath = join(dir, ".intermediate", "nested", "output.png");
+    await writeSolidImage(inputPath, 800, 1000, 0x43a047ff);
+    const apiOutput = new Image(800, 1200);
+    apiOutput.fill(0xffffffff);
+    const sourceRegion = new Image(800, 1000);
+    sourceRegion.fill(0x0000ffff);
+    apiOutput.composite(sourceRegion, 0, 100);
+    const job = createJob(context, { inputPath, outputPath });
+    const client: ImageEditClientLike = {
+      editImage: async () => ({ bytes: await apiOutput.encode(), outputFormat: "png" }),
+    };
+
+    await runJob({
+      job,
+      prompt: "translate",
+      formatFromApi: true,
+      aspectPad: {
+        enabled: true,
+        fill: "white",
+        cropBackToOriginal: true,
+        intermediateDir: ".intermediate",
+      },
+      outputDir: dir,
+      retry,
+      client,
+      jobStore: context.jobs,
+      attemptStore: context.attempts,
+      outputStore: context.outputs,
+      now: fixedClock(),
+    });
+
+    const final = await Image.decode(await Deno.readFile(outputPath));
+    const uncropped = await Image.decode(await Deno.readFile(intermediatePath));
+    const outputs = context.outputs.listByJob(job.id);
+
+    assertEquals(final.width, 800);
+    assertEquals(final.height, 1000);
+    assertEquals(final.getPixelAt(1, 1), 0x0000ffff);
+    assertEquals(uncropped.width, 800);
+    assertEquals(uncropped.height, 1200);
+    assertEquals(outputs.length, 1);
+    assertEquals(outputs[0].outputPath, outputPath);
   } finally {
     context.db.close();
   }
@@ -261,4 +366,25 @@ function fixedClock(): () => string {
     call += 1;
     return value;
   };
+}
+
+async function writeSolidImage(
+  path: string,
+  width: number,
+  height: number,
+  color: number,
+): Promise<void> {
+  const image = new Image(width, height);
+  image.fill(color);
+  await Deno.writeFile(path, await image.encode());
+}
+
+async function assertNotFound(path: string): Promise<void> {
+  try {
+    await Deno.stat(path);
+    throw new Error(`Expected ${path} to be removed`);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return;
+    throw error;
+  }
 }
