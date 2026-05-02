@@ -34,3 +34,46 @@ Deno.test("loadConfig rejects invalid image option", async () => {
 
   await assertRejects(() => loadConfig(path), Error, "openai.image.size is invalid");
 });
+
+Deno.test("loadConfig accepts direct openai apiKey without apiKeyEnv", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.openai.apiKey, "test-key");
+  assertEquals(config.openai.apiKeyEnv, "OPENAI_API_KEY");
+});
+
+Deno.test("loadConfig rejects missing openai apiKey and apiKeyEnv", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKeyEnv: ''",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  await assertRejects(
+    () => loadConfig(path),
+    Error,
+    "one of openai.apiKey or openai.apiKeyEnv is required",
+  );
+});

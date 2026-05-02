@@ -12,7 +12,8 @@ export interface AppConfig {
 
 export interface OpenAIConfig {
   baseUrl: string;
-  apiKeyEnv: string;
+  apiKey?: string;
+  apiKeyEnv?: string;
   model: string;
   timeoutMs: number;
   image: OpenAIImageConfig;

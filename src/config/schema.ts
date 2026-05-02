@@ -13,7 +13,9 @@ export function validateConfig(config: AppConfig): AppConfig {
   if (!config.outputDir.trim()) errors.push("outputDir is required");
   if (!config.prompt.trim()) errors.push("prompt is required");
   if (!config.openai.baseUrl.trim()) errors.push("openai.baseUrl is required");
-  if (!config.openai.apiKeyEnv.trim()) errors.push("openai.apiKeyEnv is required");
+  if (!config.openai.apiKey?.trim() && !config.openai.apiKeyEnv?.trim()) {
+    errors.push("one of openai.apiKey or openai.apiKeyEnv is required");
+  }
   if (!config.openai.model.trim()) errors.push("openai.model is required");
   if (config.openai.timeoutMs <= 0) errors.push("openai.timeoutMs must be greater than 0");
   if (!config.openai.image) errors.push("openai.image is required");

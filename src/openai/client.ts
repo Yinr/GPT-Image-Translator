@@ -58,9 +58,16 @@ export function createOpenAIImageClient(
   config: OpenAIConfig,
   getEnv: (name: string) => string | undefined = Deno.env.get,
 ): OpenAIImageClient {
-  const apiKey = getEnv(config.apiKeyEnv);
+  const apiKey = config.apiKey?.trim() ||
+    (config.apiKeyEnv ? getEnv(config.apiKeyEnv)?.trim() : undefined);
   if (!apiKey) {
-    throw new Error(`Missing API key environment variable: ${config.apiKeyEnv}`);
+    if (config.apiKeyEnv) {
+      throw new Error(
+        `Missing API key: openai.apiKey is empty and environment variable ${config.apiKeyEnv} is not set`,
+      );
+    }
+
+    throw new Error("Missing API key: set openai.apiKey or openai.apiKeyEnv");
   }
 
   return new OpenAIImageClient(config, apiKey);

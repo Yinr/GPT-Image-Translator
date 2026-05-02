@@ -1,5 +1,9 @@
-import { assertEquals, assertInstanceOf } from "@std/assert";
-import { normalizeBaseUrl, OpenAIImageClient } from "../src/openai/client.ts";
+import { assertEquals, assertInstanceOf, assertThrows } from "@std/assert";
+import {
+  createOpenAIImageClient,
+  normalizeBaseUrl,
+  OpenAIImageClient,
+} from "../src/openai/client.ts";
 import { ApiError } from "../src/openai/error-classifier.ts";
 import type { OpenAIConfig } from "../src/shared/types.ts";
 
@@ -85,4 +89,31 @@ Deno.test("OpenAIImageClient throws classified API errors", async () => {
     assertEquals(error.info.kind, "authentication_error");
     assertEquals(error.info.stopRun, true);
   }
+});
+
+Deno.test("createOpenAIImageClient prefers apiKey from config", () => {
+  const client = createOpenAIImageClient({
+    ...config,
+    apiKey: "config-key",
+  }, () => "env-key");
+
+  assertInstanceOf(client, OpenAIImageClient);
+});
+
+Deno.test("createOpenAIImageClient falls back to apiKeyEnv", () => {
+  const client = createOpenAIImageClient(config, () => "env-key");
+
+  assertInstanceOf(client, OpenAIImageClient);
+});
+
+Deno.test("createOpenAIImageClient rejects when no api key source is available", () => {
+  assertThrows(
+    () =>
+      createOpenAIImageClient(
+        { ...config, apiKey: undefined, apiKeyEnv: undefined },
+        () => undefined,
+      ),
+    Error,
+    "Missing API key: set openai.apiKey or openai.apiKeyEnv",
+  );
 });
