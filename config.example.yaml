@@ -1,0 +1,101 @@
+# 输入目录：程序会扫描这里的图片文件
+inputDir: ./input
+
+# 输出目录：输出文件会保持与输入目录相同的相对目录结构
+outputDir: ./output
+
+# OpenAI 兼容接口配置
+openai:
+  # API 基础地址。可以写到服务根地址或 /v1，程序会自动规范化为 /v1
+  baseUrl: http://127.0.0.1:3000/v1
+
+  # API Key 所在的环境变量名。不要把真实 key 写进配置文件
+  apiKeyEnv: OPENAI_API_KEY
+
+  # 图片模型。当前已验证：gpt-image-2、gpt-image-2-2k、gpt-image-2-4k
+  model: gpt-image-2
+
+  # 单次请求超时时间，单位毫秒。真实测试中单张图可能超过 200 秒
+  timeoutMs: 600000
+
+  # 图片参数配置。
+  # 当值为 auto 时，程序会省略该字段，让接口使用默认行为。
+  # size 可选：auto、1024x1024、1024x1536、1536x1024
+  # quality 可选：auto、low、medium、high
+  # background 可选：auto、opaque、transparent；gpt-image-2 不支持 transparent
+  # output_format 可选：png、webp、jpeg；当前实际接口已验证 png
+  image:
+    # 生成图片尺寸。可选：auto / 1024x1024 / 1024x1536 / 1536x1024
+    size: auto
+
+    # 生成图片质量。可选：auto / low / medium / high
+    quality: auto
+
+    # 背景类型。可选：auto / opaque / transparent
+    # 注意：gpt-image-2 不支持 transparent，若接口不支持会报错
+    background: auto
+
+    # 输出格式。可选：png / webp / jpeg
+    outputFormat: png
+
+# 翻译提示词：每张图片都会使用这个 prompt
+prompt: |
+  Translate all text in the image to Simplified Chinese while preserving
+  the original layout, visual composition, typography style, and image content.
+
+# 扫描配置
+scan:
+  # 是否递归扫描子目录。可选：true / false
+  recursive: true
+
+  # 支持的输入图片扩展名。可以按需增删
+  extensions:
+    - .jpg
+    - .jpeg
+    - .png
+    - .webp
+
+# 输出配置
+output:
+  # 输出文件已存在时是否跳过。可选：true / false
+  skipExisting: true
+
+  # 是否覆盖已有输出。可选：true / false
+  # 注意：overwrite 和 skipExisting 不应同时为 true
+  overwrite: false
+
+  # 是否使用 API 返回的 output_format 作为输出扩展名。当前建议保持 true
+  formatFromApi: true
+
+# 队列执行配置
+queue:
+  # 是否启用断点续跑。可选：true / false
+  resume: true
+
+  # 并发请求数。默认建议 1，避免触发限流
+  concurrency: 1
+
+  # 每个任务开始前等待时间，单位毫秒。默认单并发下可用于降低限流概率
+  minDelayMs: 1000
+
+  # 是否遇到单个不可恢复失败就停止整个 run。可选：true / false
+  failFast: false
+
+# 重试配置
+retry:
+  # 最大尝试次数，包含首次请求
+  maxAttempts: 5
+
+  # 初始重试等待时间，单位毫秒
+  initialDelayMs: 3000
+
+  # 最大重试等待时间，单位毫秒
+  maxDelayMs: 300000
+
+  # 指数退避倍率。例如 2 表示 3s、6s、12s...
+  backoffFactor: 2
+
+# 本地状态存储配置
+storage:
+  # SQLite 数据库路径，用于记录 runs/jobs/attempts/outputs，支持断点续跑和查询
+  sqlitePath: ./state/translator.db

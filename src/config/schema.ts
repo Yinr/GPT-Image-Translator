@@ -1,0 +1,71 @@
+import type { AppConfig } from "../shared/types.ts";
+import {
+  OPENAI_IMAGE_BACKGROUNDS,
+  OPENAI_IMAGE_OUTPUT_FORMATS,
+  OPENAI_IMAGE_QUALITIES,
+  OPENAI_IMAGE_SIZES,
+} from "../openai/image-options.ts";
+
+export function validateConfig(config: AppConfig): AppConfig {
+  const errors: string[] = [];
+
+  if (!config.inputDir.trim()) errors.push("inputDir is required");
+  if (!config.outputDir.trim()) errors.push("outputDir is required");
+  if (!config.prompt.trim()) errors.push("prompt is required");
+  if (!config.openai.baseUrl.trim()) errors.push("openai.baseUrl is required");
+  if (!config.openai.apiKeyEnv.trim()) errors.push("openai.apiKeyEnv is required");
+  if (!config.openai.model.trim()) errors.push("openai.model is required");
+  if (config.openai.timeoutMs <= 0) errors.push("openai.timeoutMs must be greater than 0");
+  if (!config.openai.image) errors.push("openai.image is required");
+  if (config.scan.extensions.length === 0) errors.push("scan.extensions must not be empty");
+  if (config.queue.concurrency < 1) errors.push("queue.concurrency must be at least 1");
+  if (config.queue.minDelayMs < 0) errors.push("queue.minDelayMs must be at least 0");
+  if (config.retry.maxAttempts < 1) errors.push("retry.maxAttempts must be at least 1");
+  if (config.retry.initialDelayMs < 0) errors.push("retry.initialDelayMs must be at least 0");
+  if (config.retry.maxDelayMs < config.retry.initialDelayMs) {
+    errors.push("retry.maxDelayMs must be greater than or equal to retry.initialDelayMs");
+  }
+  if (config.retry.backoffFactor < 1) errors.push("retry.backoffFactor must be at least 1");
+  if (!config.storage.sqlitePath.trim()) errors.push("storage.sqlitePath is required");
+
+  if (config.openai.image) {
+    if (!isValidImageSize(config.openai.image.size)) errors.push("openai.image.size is invalid");
+    if (!isValidImageQuality(config.openai.image.quality)) {
+      errors.push("openai.image.quality is invalid");
+    }
+    if (!isValidImageBackground(config.openai.image.background)) {
+      errors.push("openai.image.background is invalid");
+    }
+    if (!isValidImageOutputFormat(config.openai.image.outputFormat)) {
+      errors.push("openai.image.outputFormat is invalid");
+    }
+  }
+
+  if (config.output.skipExisting && config.output.overwrite) {
+    errors.push("output.skipExisting and output.overwrite cannot both be true");
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Invalid config:\n${errors.map((error) => `- ${error}`).join("\n")}`);
+  }
+
+  return config;
+}
+
+function isValidImageSize(value: string): boolean {
+  return OPENAI_IMAGE_SIZES.includes(value as (typeof OPENAI_IMAGE_SIZES)[number]);
+}
+
+function isValidImageQuality(value: string): boolean {
+  return OPENAI_IMAGE_QUALITIES.includes(value as (typeof OPENAI_IMAGE_QUALITIES)[number]);
+}
+
+function isValidImageBackground(value: string): boolean {
+  return OPENAI_IMAGE_BACKGROUNDS.includes(value as (typeof OPENAI_IMAGE_BACKGROUNDS)[number]);
+}
+
+function isValidImageOutputFormat(value: string): boolean {
+  return OPENAI_IMAGE_OUTPUT_FORMATS.includes(
+    value as (typeof OPENAI_IMAGE_OUTPUT_FORMATS)[number],
+  );
+}
