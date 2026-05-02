@@ -40,4 +40,11 @@ export const defaultConfig: AppConfig = {
   storage: {
     sqlitePath: "./state/translator.db",
   },
+  logging: {
+    enabled: false,
+    level: "info",
+    dir: "./logs",
+    console: false,
+    file: true,
+  },
 };

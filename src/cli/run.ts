@@ -4,6 +4,7 @@ import { scanImages } from "../core/scanner.ts";
 import { createOpenAIImageClient } from "../openai/client.ts";
 import { planJobs } from "../queue/job-planner.ts";
 import { runQueue } from "../queue/queue-runner.ts";
+import { createLogger } from "../logging/logger.ts";
 import { nowIso } from "../shared/time.ts";
 import type { AppConfig } from "../shared/types.ts";
 import { openDatabase } from "../storage/db.ts";
@@ -63,11 +64,20 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const resumable = options.config.queue.resume ? runStore.findResumable(configHash) : undefined;
     const runId = resumable?.id ?? createRunId();
     const resumed = Boolean(resumable);
+    const logger = createLogger({ config: options.config.logging, runId });
     log(
       resumed
         ? `Resuming run ${runId}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`
         : `Starting run ${runId}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`,
     );
+    await logger.info(resumed ? "Run resumed" : "Run started", {
+      runId,
+      inputDir: options.config.inputDir,
+      outputDir: options.config.outputDir,
+      concurrency: options.config.queue.concurrency,
+      minDelayMs: options.config.queue.minDelayMs,
+      formatFromApi: options.config.output.formatFromApi,
+    });
 
     if (!resumable) {
       runStore.create({
@@ -108,9 +118,19 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     log(
       `Planned jobs: total=${images.length}, pending=${countsBeforeRun.pending}, retryable=${countsBeforeRun.retryable}, skipped=${countsBeforeRun.skipped}, succeeded=${countsBeforeRun.succeeded}, failed=${countsBeforeRun.failed}`,
     );
+    await logger.info("Jobs planned", {
+      runId,
+      total: images.length,
+      pending: countsBeforeRun.pending,
+      retryable: countsBeforeRun.retryable,
+      skipped: countsBeforeRun.skipped,
+      succeeded: countsBeforeRun.succeeded,
+      failed: countsBeforeRun.failed,
+    });
     if (runnableJobs === 0) {
       log(`No runnable jobs remain for run ${runId}. Marking run as completed.`);
       runStore.updateStatus(runId, "completed", nowIso());
+      await logger.info("Run completed with no runnable jobs", { runId });
       return {
         runId,
         resumed,
@@ -143,11 +163,19 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       jobStore,
       attemptStore,
       outputStore,
-      onJobStart: ({ job, attemptNo }) => {
+      onJobStart: async ({ job, attemptNo }) => {
         startedJobs += 1;
         log(`Starting [${startedJobs}/${runnableJobs}] attempt ${attemptNo} for ${job.inputPath}`);
+        await logger.info("Job started", {
+          runId,
+          jobId: job.id,
+          attemptNo,
+          progress: `${startedJobs}/${runnableJobs}`,
+          inputPath: job.inputPath,
+          outputPath: job.outputPath,
+        });
       },
-      onJobFinish: ({ job, result }) => {
+      onJobFinish: async ({ job, result }) => {
         finishedJobs += 1;
         const duration = formatDuration(result.durationMs);
         if (result.status === "succeeded") {
@@ -156,6 +184,14 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
               result.outputPath ?? job.outputPath
             } in ${duration}`,
           );
+          await logger.info("Job completed", {
+            runId,
+            jobId: job.id,
+            progress: `${finishedJobs}/${runnableJobs}`,
+            inputPath: job.inputPath,
+            outputPath: result.outputPath ?? job.outputPath,
+            durationMs: result.durationMs,
+          });
           return;
         }
 
@@ -165,6 +201,16 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
               result.errorType ?? "unknown"
             }] ${result.errorMessage ?? ""}`.trim(),
           );
+          await logger.warn("Job scheduled for retry", {
+            runId,
+            jobId: job.id,
+            progress: `${finishedJobs}/${runnableJobs}`,
+            inputPath: job.inputPath,
+            durationMs: result.durationMs,
+            errorType: result.errorType,
+            errorMessage: result.errorMessage,
+            nextAttemptAt: result.nextAttemptAt,
+          });
           return;
         }
 
@@ -173,6 +219,15 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
             result.errorType ?? "unknown"
           }] ${result.errorMessage ?? ""}`.trim(),
         );
+        await logger.error("Job failed", {
+          runId,
+          jobId: job.id,
+          progress: `${finishedJobs}/${runnableJobs}`,
+          inputPath: job.inputPath,
+          durationMs: result.durationMs,
+          errorType: result.errorType,
+          errorMessage: result.errorMessage,
+        });
       },
     });
     const counts = jobStore.countByStatus(runId);
@@ -182,6 +237,16 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       errorType: job.lastErrorType,
       errorMessage: job.lastErrorMessage,
     }));
+    await logger.info(summary.stopped ? "Run stopped" : "Run finished", {
+      runId,
+      processed: summary.processed,
+      succeeded: summary.succeeded,
+      retryable: summary.retryable,
+      failed: summary.failed,
+      skipped: counts.skipped,
+      pending: counts.pending,
+      stopped: summary.stopped,
+    });
 
     return {
       runId,

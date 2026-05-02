@@ -166,7 +166,21 @@ retry:
 
 storage:
   sqlitePath: ./state/translator.db
+
+logging:
+  enabled: false
+  level: info
+  dir: ./logs
 ```
+
+Logging behavior notes:
+
+- `logging.enabled: false` is the default and should preserve current behavior.
+- The initial logging feature should focus on local CLI diagnostics, not distributed telemetry.
+- User-facing progress output and diagnostic log persistence should be treated as related but
+  distinct concerns.
+- The project should not adopt `@std/log` as a new foundation because Deno marks it as no longer
+  recommended and likely removable in the future.
 
 ## Queue Model
 
@@ -243,6 +257,10 @@ Special handling:
 - Always: Treat API keys as secrets and avoid printing them.
 - Always: Allow API keys to come from either `openai.apiKey` or `openai.apiKeyEnv`, with
   `openai.apiKey` taking precedence when both are set.
+- Always: Keep user-facing progress output readable even if file-based diagnostic logging is
+  disabled.
+- Always: Avoid writing raw API keys or other secrets into logs, persisted log files, or structured
+  diagnostics.
 - Always: Preserve directory structure from input to output.
 - Always: Persist job status before and after API attempts.
 - Always: Decode `data[0].b64_json` before writing output files.
@@ -272,6 +290,25 @@ Special handling:
 
 The current implementation assumes one provider and one active API key source per run. A later major
 version may expand this into a dedicated account-scheduling layer.
+
+Another future expansion is a dedicated local logging module for CLI diagnostics.
+
+Expected logging direction:
+
+- Add an internal logging module instead of adopting `@std/log` as a new long-term dependency.
+- Support configurable log levels such as `debug`, `info`, `warn`, and `error`.
+- Support optional file logging under a configurable directory, defaulting to `./logs`.
+- Keep log persistence disabled by default so basic CLI use remains quiet and simple.
+- Keep user-facing progress messages separate from lower-level diagnostic records where practical.
+
+Design constraints for that future work:
+
+- Log configuration should be explicit in YAML and preserve current behavior when disabled.
+- The logging module should be reusable by queue, storage, and provider code without forcing CLI
+  formatting concerns downward.
+- File logging should be safe on Windows and create directories lazily when needed.
+- The first implementation step should remain intentionally small: level filtering, optional file
+  sink, and a stable logger interface.
 
 Expected future direction:
 
@@ -306,6 +343,9 @@ Design constraints for that future work:
   explicitly configured?
 - For future key balancing, should scheduling remain simple round-robin at first, or account for
   cooldowns, quotas, and recent rate limits from the beginning?
+- For future logging, should file output be one file per run, one rolling shared file, or both?
+- For future logging, should progress output and diagnostic logs share one formatter, or remain
+  intentionally separate?
 - Whether prompt should support per-directory or per-file overrides later.
 - Whether cancellation and pause controls are needed in the first CLI release or only for the future
   Web UI.

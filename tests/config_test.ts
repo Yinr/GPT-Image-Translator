@@ -9,6 +9,9 @@ Deno.test("loadConfig loads example config with defaults", async () => {
   assertEquals(config.scan.extensions.includes(".jpg"), true);
   assertEquals(config.openai.image.size, "auto");
   assertEquals(config.openai.image.outputFormat, "png");
+  assertEquals(config.logging.enabled, false);
+  assertEquals(config.logging.level, "info");
+  assertEquals(config.logging.dir, "./logs");
 });
 
 Deno.test("loadConfig rejects missing prompt", async () => {
@@ -76,4 +79,42 @@ Deno.test("loadConfig rejects missing openai apiKey and apiKeyEnv", async () => 
     Error,
     "one of openai.apiKey or openai.apiKeyEnv is required",
   );
+});
+
+Deno.test("loadConfig normalizes and validates logging config", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "logging:",
+      "  enabled: true",
+      "  level: DEBUG",
+      "  dir: ./custom-logs",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.logging.enabled, true);
+  assertEquals(config.logging.level, "debug");
+  assertEquals(config.logging.dir, "./custom-logs");
+});
+
+Deno.test("loadConfig rejects invalid logging level", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "logging:",
+      "  level: verbose",
+    ].join("\n"),
+  );
+
+  await assertRejects(() => loadConfig(path), Error, "logging.level is invalid");
 });

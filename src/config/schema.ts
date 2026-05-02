@@ -6,6 +6,8 @@ import {
   OPENAI_IMAGE_SIZES,
 } from "../openai/image-options.ts";
 
+const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
+
 export function validateConfig(config: AppConfig): AppConfig {
   const errors: string[] = [];
 
@@ -29,6 +31,13 @@ export function validateConfig(config: AppConfig): AppConfig {
   }
   if (config.retry.backoffFactor < 1) errors.push("retry.backoffFactor must be at least 1");
   if (!config.storage.sqlitePath.trim()) errors.push("storage.sqlitePath is required");
+  if (!config.logging.dir.trim()) errors.push("logging.dir is required");
+  if (!LOG_LEVELS.includes(config.logging.level as (typeof LOG_LEVELS)[number])) {
+    errors.push("logging.level is invalid");
+  }
+  if (config.logging.enabled && !config.logging.console && !config.logging.file) {
+    errors.push("logging.console and logging.file cannot both be false when logging is enabled");
+  }
 
   if (config.openai.image) {
     if (!isValidImageSize(config.openai.image.size)) errors.push("openai.image.size is invalid");

@@ -104,3 +104,20 @@ retry:
 storage:
   # SQLite 数据库路径，用于记录 runs/jobs/attempts/outputs，支持断点续跑和查询
   sqlitePath: ./state/translator.db
+
+# 诊断日志配置。默认关闭，不影响命令行进度输出
+logging:
+  # 是否启用诊断日志记录。可选：true / false
+  enabled: false
+
+  # 日志等级。可选：debug / info / warn / error
+  level: info
+
+  # 日志目录。启用文件日志时会自动创建
+  dir: ./logs
+
+  # 是否把诊断日志也输出到控制台。进度提示不受此项影响
+  console: false
+
+  # 是否写入日志文件
+  file: true

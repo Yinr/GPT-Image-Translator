@@ -50,6 +50,8 @@ function normalizeConfig(config: AppConfig): void {
     .toLowerCase() as AppConfig["openai"]["image"]["background"];
   config.openai.image.outputFormat = config.openai.image.outputFormat
     .toLowerCase() as AppConfig["openai"]["image"]["outputFormat"];
+  config.logging.level = config.logging.level.toLowerCase() as AppConfig["logging"]["level"];
+  config.logging.dir = config.logging.dir.trim();
 }
 
 function isPlainObject(value: unknown): value is PlainObject {

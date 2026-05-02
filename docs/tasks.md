@@ -643,6 +643,178 @@ Longer-term target behavior:
 
 **Estimated scope:** Very Large
 
+### Task F13: Design Local Logging Module and Config
+
+**Description:** Design a dedicated local logging module for CLI diagnostics. This should be treated
+as a standalone module rather than relying on `@std/log`, because Deno marks `@std/log` as no longer
+recommended and likely removable in the future.
+
+Design goals:
+
+- Keep user-facing progress output separate from diagnostic log persistence.
+- Support explicit log levels without forcing verbose output by default.
+- Support optional file logging to a configurable directory.
+- Preserve current behavior when logging is disabled.
+
+Proposed YAML shape:
+
+```yaml
+logging:
+  enabled: false
+  level: info # debug / info / warn / error
+  dir: ./logs
+```
+
+**Acceptance criteria:**
+
+- Logging config shape is specified in spec and task docs.
+- The module boundary is defined so queue/core code can emit logs without owning CLI formatting.
+- The design explicitly rejects `@std/log` as the new default foundation.
+- Secret-handling rules for logs are documented.
+
+**Verification:**
+
+- `docs/spec.md` updated with agreed logging direction.
+- `docs/tasks.md` updated if logging scope changes.
+
+**Files likely touched:**
+
+- `docs/spec.md`
+- `docs/tasks.md`
+- Possibly an ADR under `docs/adr/`
+
+**Estimated scope:** Medium
+
+### Task F14: Add Logging Config Validation and Defaults
+
+**Description:** Extend configuration types, defaults, and validation to support an opt-in logging
+section.
+
+Target behavior:
+
+- Logging is disabled by default.
+- Default log directory is `./logs`.
+- Supported levels are constrained to a small explicit set.
+- Invalid or unsafe logging configuration is rejected early.
+
+**Acceptance criteria:**
+
+- Config types include a logging section.
+- Defaults preserve current non-logging behavior.
+- Validation rejects unknown levels and empty log directory values.
+- `config.example.yaml` documents the feature in Chinese.
+
+**Verification:**
+
+- `deno test tests/config_test.ts`
+- `deno task check`
+
+**Files likely touched:**
+
+- `src/shared/types.ts`
+- `src/config/defaults.ts`
+- `src/config/load.ts`
+- `src/config/schema.ts`
+- `config.example.yaml`
+- `tests/config_test.ts`
+
+**Estimated scope:** Small
+
+### Task F15: Implement Lightweight Logger Module
+
+**Description:** Build a small internal logger module with level filtering and optional file output.
+
+Initial target behavior:
+
+- Support `debug`, `info`, `warn`, and `error` levels.
+- Support a no-op logger when disabled.
+- Support console logging and optional file logging through a stable interface.
+- Create the log directory lazily when file logging is enabled.
+
+**Acceptance criteria:**
+
+- The logger module has a narrow, reusable interface.
+- Disabled logging avoids creating files or directories.
+- File logging works on Windows and writes deterministic text output.
+- Logger tests cover level filtering and disabled behavior.
+
+**Verification:**
+
+- `deno test tests/logger_test.ts`
+- `deno task check`
+
+**Files likely touched:**
+
+- `src/logging/`
+- `tests/logger_test.ts`
+
+**Estimated scope:** Medium
+
+### Task F16: Integrate Diagnostic Logging into CLI Execution
+
+**Description:** Wire the logger module into CLI execution, queue execution, and key operational
+events while preserving readable user-facing progress output.
+
+Target behavior:
+
+- Existing progress output remains available to the user.
+- Diagnostic logs can additionally record run start/end, job start/end, retries, and failures.
+- Logging can be turned on without changing core execution outcomes.
+- Logging level controls which diagnostic records are persisted.
+
+**Acceptance criteria:**
+
+- CLI execution can create and pass a logger instance through the runtime flow.
+- Logging remains optional and does not break existing tests when disabled.
+- Run/job lifecycle events emit diagnostic logs through the new module.
+- Secret values are not included in emitted log lines.
+
+**Verification:**
+
+- `deno test tests/cli_run_test.ts tests/job_runner_test.ts tests/queue_runner_test.ts`
+- `deno task test`
+
+**Files likely touched:**
+
+- `src/main.ts`
+- `src/cli/run.ts`
+- `src/queue/`
+- `src/openai/`
+- `tests/cli_run_test.ts`
+- `tests/job_runner_test.ts`
+- `tests/queue_runner_test.ts`
+
+**Estimated scope:** Medium
+
+### Task F17: Define Log File Strategy and Operational Behavior
+
+**Description:** Decide how log files should be organized for real usage and whether they should be
+per-run, shared, or rotated.
+
+Questions this task should settle:
+
+- Should logs be written to one file per run, one shared file, or a simple rolling scheme?
+- Should dry-run logging create files when enabled?
+- Should query commands eventually expose log file locations or recent logging metadata?
+
+**Acceptance criteria:**
+
+- File naming and retention behavior are documented.
+- Operational tradeoffs are documented for Windows/local CLI usage.
+- The decision does not require immediate implementation of complex rotation.
+
+**Verification:**
+
+- Documentation review.
+
+**Files likely touched:**
+
+- `docs/spec.md`
+- `docs/tasks.md`
+- Possibly `docs/adr/`
+
+**Estimated scope:** Small
+
 ## Open Planning Questions
 
 - Should `gpt-image-2-2k` and `gpt-image-2-4k` be exposed as model presets or remain plain model
@@ -658,6 +830,10 @@ Longer-term target behavior:
 - For multi-provider support, should provider failover be automatic or require explicit routing
   policy?
 - Should key balancing be purely round-robin, weighted, cooldown-aware, or usage-quota-aware?
+- Should local file logging default to one log file per run, a shared append-only file, or a simple
+  rolling strategy?
+- Should dry-run mode write diagnostic log files when logging is enabled, or only emit in-memory /
+  console diagnostics?
 - Should prompt support per-directory or per-file overrides later?
 - Are cancellation and pause controls needed in the first CLI release or only for the future Web UI?
 
@@ -669,6 +845,7 @@ Longer-term target behavior:
 | API key leaks in logs                                  | High   | Read from env and mask secret values                           |
 | 429 or transient failures interrupt batches            | High   | Retry policy with `Retry-After` and SQLite attempts            |
 | Output extension mismatch                              | Medium | Use `output_format` from response                              |
+| Logging writes secrets or noisy internal details       | High   | Separate progress from diagnostics and redact sensitive values |
 | Future Web UI needs different control flow             | Medium | Keep queue/core independent from CLI                           |
 | Fixed API canvas sizes crop or alter unusual ratios    | Medium | Optional aspect-ratio preprocessing and crop-back workflow     |
 | Cropped output hides useful uncropped API result       | Medium | Preserve uncropped API output in an intermediate output folder |

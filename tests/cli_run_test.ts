@@ -74,6 +74,43 @@ Deno.test("execute logs planning and job progress", async () => {
   );
 });
 
+Deno.test("execute writes diagnostic log file when logging is enabled", async () => {
+  const inputDir = await Deno.makeTempDir();
+  const outputDir = await Deno.makeTempDir();
+  const stateDir = await Deno.makeTempDir();
+  const logDir = await Deno.makeTempDir();
+  await Deno.writeFile(join(inputDir, "a.jpg"), new Uint8Array([1]));
+
+  const client: ImageEditClientLike = {
+    editImage: () => Promise.resolve({ bytes: new Uint8Array([1]), outputFormat: "png" }),
+  };
+  const result = await execute({
+    dryRun: false,
+    client,
+    config: {
+      ...structuredClone(defaultConfig),
+      inputDir,
+      outputDir,
+      prompt: "translate",
+      storage: { sqlitePath: join(stateDir, "translator.db") },
+      logging: {
+        ...defaultConfig.logging,
+        enabled: true,
+        dir: logDir,
+        level: "info",
+        file: true,
+        console: false,
+      },
+    },
+  });
+
+  const text = await Deno.readTextFile(join(logDir, `${result.runId}.log`));
+
+  assertEquals(text.includes("INFO Run started"), true);
+  assertEquals(text.includes("INFO Job completed"), true);
+  assertEquals(text.includes("INFO Run finished"), true);
+});
+
 Deno.test("execute reuses resumable run when resume is enabled", async () => {
   const inputDir = await Deno.makeTempDir();
   const outputDir = await Deno.makeTempDir();

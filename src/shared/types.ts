@@ -8,6 +8,7 @@ export interface AppConfig {
   queue: QueueConfig;
   retry: RetryConfig;
   storage: StorageConfig;
+  logging: LoggingConfig;
 }
 
 export interface OpenAIConfig {
@@ -62,6 +63,16 @@ export interface RetryConfig {
 export interface StorageConfig {
   sqlitePath: string;
 }
+
+export interface LoggingConfig {
+  enabled: boolean;
+  level: LogLevel;
+  dir: string;
+  console: boolean;
+  file: boolean;
+}
+
+export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface ImageFile {
   absolutePath: string;
