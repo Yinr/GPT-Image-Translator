@@ -1,3 +1,4 @@
 .local/
 config.yaml
 logs/
+dist/
