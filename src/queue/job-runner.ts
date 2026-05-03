@@ -4,6 +4,7 @@ import type {
   ImageEditRequest,
   ImageEditResult,
   JobRecord,
+  ProcessingMetadataRecord,
   RetryConfig,
 } from "../shared/types.ts";
 import { cropApiOutputToOriginal, prepareAspectPaddedImage } from "../core/image-preprocessor.ts";
@@ -101,6 +102,7 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
         imagePath: prepared.imagePath,
         prompt: options.prompt,
         size: prepared.size,
+        responseArtifactPath: `${options.job.outputPath}.api-response.json`,
       });
     } finally {
       await prepared.cleanup();
@@ -120,7 +122,7 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
         id: crypto.randomUUID(),
         jobId: options.job.id,
         enabled: true,
-        apiSize: prepared.metadata.apiSize,
+        apiSize: processingApiSize(prepared.metadata.apiSize),
         sourceWidth: prepared.metadata.sourceWidth,
         sourceHeight: prepared.metadata.sourceHeight,
         canvasWidth: prepared.metadata.canvasWidth,
@@ -287,6 +289,12 @@ function normalizeError(error: unknown): ApiError {
     stopRun: false,
     message,
   });
+}
+
+function processingApiSize(
+  size: ProcessingAttemptMetadata["apiSize"],
+): ProcessingMetadataRecord["apiSize"] {
+  return size === "1024x1024" || size === "1024x1536" || size === "1536x1024" ? size : undefined;
 }
 
 function durationMs(startedAt: string, finishedAt: string): number {

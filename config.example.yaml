@@ -19,6 +19,12 @@ openai:
   # API Key 所在的环境变量名。若未直接填写 apiKey，则会读取这里指定的环境变量。
   apiKeyEnv: OPENAI_API_KEY
 
+  # 接口适配器。默认 openai；只有对明确不完全兼容 OpenAI 图片编辑接口的站点，
+  # 才切换到对应适配器。gpt2api 会启用 /images/generations + reference_images 回退；
+  # pic2api 当前仍优先复用 OpenAI 路径，但会对 gpt-image-2 的 size:auto 做显式处理。
+  # 可选：openai / gpt2api / pic2api
+  adapter: openai
+
   # 图片模型。当前已验证：gpt-image-2、gpt-image-2-2k、gpt-image-2-4k
   model: gpt-image-2
 
@@ -26,7 +32,9 @@ openai:
   timeoutMs: 600000
 
   # 图片参数配置。
-  # 当值为 auto 时，程序会省略该字段，让接口使用默认行为。
+  # 当值为 auto 时，程序通常会省略该字段，让接口使用默认行为。
+  # 例外：pic2api + gpt-image-2 下，会按原图比例和质量档映射到推荐尺寸，
+  # 避免 provider 把 auto 静默回退成 1:1。
   # size 可选：auto、1024x1024、1024x1536、1536x1024
   # quality 可选：auto、low、medium、high
   # background 可选：auto、opaque、transparent；gpt-image-2 不支持 transparent

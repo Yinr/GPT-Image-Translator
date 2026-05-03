@@ -60,6 +60,16 @@ export function classifyHttpError(status: number, body: string, headers: Headers
     });
   }
 
+  if (status === 402) {
+    return new ApiError({
+      kind: "permission_error",
+      retryable: false,
+      stopRun: true,
+      message,
+      status,
+    });
+  }
+
   if (status === 429) {
     return new ApiError({
       kind: "rate_limit",

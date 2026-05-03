@@ -17,10 +17,13 @@ export interface OpenAIConfig {
   baseUrl: string;
   apiKey?: string;
   apiKeyEnv?: string;
+  adapter: OpenAIAdapterKind;
   model: string;
   timeoutMs: number;
   image: OpenAIImageConfig;
 }
+
+export type OpenAIAdapterKind = "openai" | "gpt2api" | "pic2api";
 
 export interface OpenAIImageConfig {
   size: OpenAIImageSize;
@@ -112,8 +115,11 @@ export interface ImageEditResult {
 export interface ImageEditRequest {
   imagePath: string;
   prompt: string;
-  size?: OpenAIImageSize;
+  size?: ImageRequestSize;
+  responseArtifactPath?: string;
 }
+
+export type ImageRequestSize = OpenAIImageSize | `${number}x${number}`;
 
 export interface ApiErrorInfo {
   kind: ApiErrorKind;

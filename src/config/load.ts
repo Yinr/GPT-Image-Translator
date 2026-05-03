@@ -43,6 +43,7 @@ function normalizeConfig(config: AppConfig): void {
   config.openai.baseUrl = config.openai.baseUrl.replace(/\/+$/, "");
   config.openai.apiKey = config.openai.apiKey?.trim() || undefined;
   config.openai.apiKeyEnv = config.openai.apiKeyEnv?.trim() || undefined;
+  config.openai.adapter = config.openai.adapter.toLowerCase() as AppConfig["openai"]["adapter"];
   config.openai.image.size = config.openai.image.size
     .toLowerCase() as AppConfig["openai"]["image"]["size"];
   config.openai.image.quality = config.openai.image.quality

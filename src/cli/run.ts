@@ -1,7 +1,7 @@
 import { mapOutputPath } from "../core/path-map.ts";
 import { createConfigHash, createRunId } from "../core/run-id.ts";
 import { scanImages } from "../core/scanner.ts";
-import { createOpenAIImageClient } from "../openai/client.ts";
+import { createImageAdapter } from "../adapters/factory.ts";
 import { planJobs } from "../queue/job-planner.ts";
 import { runQueue } from "../queue/queue-runner.ts";
 import { createLogger } from "../logging/logger.ts";
@@ -183,7 +183,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       outputDir: options.config.outputDir,
       aspectPad: options.config.preprocess.aspectPad,
       retry: options.config.retry,
-      client: options.client ?? createOpenAIImageClient(options.config.openai),
+      client: options.client ?? createImageAdapter(options.config.openai),
       runStore,
       jobStore,
       attemptStore,

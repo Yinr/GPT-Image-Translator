@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertExists, assertThrows } from "@std/assert";
 import { parseImageEditResponse } from "../src/openai/response-parser.ts";
 
 Deno.test("parseImageEditResponse decodes b64 image data", () => {
@@ -8,6 +8,7 @@ Deno.test("parseImageEditResponse decodes b64 image data", () => {
     data: [{ b64_json: btoa("abc"), bytes: 3, width: 1, height: 2, revised_prompt: "x" }],
   });
 
+  assertExists(result.bytes);
   assertEquals([...result.bytes], [97, 98, 99]);
   assertEquals(result.outputFormat, "png");
   assertEquals(result.width, 1);

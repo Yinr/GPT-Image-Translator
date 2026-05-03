@@ -8,6 +8,7 @@ import {
 
 const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 const ASPECT_PAD_FILLS = ["transparent", "white"] as const;
+const OPENAI_ADAPTERS = ["openai", "gpt2api", "pic2api"] as const;
 
 export function validateConfig(config: AppConfig): AppConfig {
   const errors: string[] = [];
@@ -23,6 +24,9 @@ export function validateConfig(config: AppConfig): AppConfig {
     errors.push("one of openai.apiKey or openai.apiKeyEnv is required");
   }
   if (!config.openai.model.trim()) errors.push("openai.model is required");
+  if (!OPENAI_ADAPTERS.includes(config.openai.adapter as OpenAIAdapterKind)) {
+    errors.push("openai.adapter is invalid");
+  }
   if (config.openai.timeoutMs <= 0) errors.push("openai.timeoutMs must be greater than 0");
   if (!config.openai.image) errors.push("openai.image is required");
   if (config.scan.extensions.length === 0) errors.push("scan.extensions must not be empty");
@@ -82,6 +86,7 @@ export function validateConfig(config: AppConfig): AppConfig {
 }
 
 type AspectPadFill = (typeof ASPECT_PAD_FILLS)[number];
+type OpenAIAdapterKind = (typeof OPENAI_ADAPTERS)[number];
 
 function isUnsafeIntermediateDir(value: string): boolean {
   const normalized = value.replace(/\\/g, "/").trim();

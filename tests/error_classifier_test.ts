@@ -25,6 +25,18 @@ Deno.test("classifyHttpError treats 401 as stop-run auth error", () => {
   assertEquals(error.info.stopRun, true);
 });
 
+Deno.test("classifyHttpError treats 402 as stop-run insufficient balance error", () => {
+  const error = classifyHttpError(
+    402,
+    JSON.stringify({ error: { message: "insufficient balance" } }),
+    new Headers(),
+  );
+
+  assertEquals(error.info.kind, "permission_error");
+  assertEquals(error.info.retryable, false);
+  assertEquals(error.info.stopRun, true);
+});
+
 Deno.test("classifyHttpError treats 500 as retryable server error", () => {
   const error = classifyHttpError(500, "server exploded", new Headers());
 

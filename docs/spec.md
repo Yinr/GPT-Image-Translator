@@ -26,6 +26,16 @@ scripts and notes are stored under `.local/smoke-test/` and should remain untrac
 - A real image edit request took about 205 seconds, so long timeouts and durable job state are
   required.
 
+Provider-specific notes:
+
+- Additional provider behavior notes should live under `docs/providers/` when a service claims
+  OpenAI compatibility but differs in request or response details.
+- `docs/providers/pic2api.md` records the current known `gpt-image-2` differences for `pic2api`,
+  especially its `size:auto` fallback-to-`1:1` behavior and provider-documented recommended size
+  tiers.
+- Adapter-specific request logic should live under `src/adapters/`, while shared parsing, retry, and
+  error helpers can remain under `src/openai/` when they are not tied to one vendor adapter.
+
 ## Tech Stack
 
 - Runtime: Deno
@@ -69,9 +79,10 @@ src/
   main.ts                 Program entrypoint
   cli/                    CLI args, command execution, terminal output
   config/                 YAML loading, defaults, validation, merge logic
+  adapters/               Image adapter interface, factory, shared base, and vendor adapters
   core/                   High-level pipeline, scanner, path mapping, events
   queue/                  Durable job queue, scheduler, runner, concurrency
-  openai/                 OpenAI-compatible image edit client and retry logic
+  openai/                 Shared OpenAI-compatible parsing, error classification, and retry helpers
   storage/                SQLite database, migrations, stores
   fs/                     File writing, path helpers, MIME helpers
   shared/                 Shared types, time utilities, result helpers
@@ -204,6 +215,9 @@ Config upgrade behavior notes:
 - `--full-update` must reject commented files unless `--allow-drop-comments` is provided.
 - Normal CLI execution should warn when a config is older than the current supported version, but it
   should not automatically rewrite the config.
+- Before the project is prepared for a stable release, config-key renames and shape changes may be
+  implemented without shipping immediate migration support; release preparation should include a
+  final pass that adds and verifies the required config migrations for the stabilized schema.
 
 ## Queue Model
 

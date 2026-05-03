@@ -164,6 +164,8 @@ Planned implementation slices:
       wider storage/config redesign.
 - [x] Run final verification for this branch slice.
 - [x] Add concise terminal and diagnostic output for aspect-ratio preprocessing.
+- [x] Preserve malformed successful image responses by saving raw response artifacts and support
+      URL/reference_images-compatible providers.
 
 Current branch constraints:
 
@@ -203,9 +205,18 @@ Deferred follow-up tasks that must survive this branch:
 - [ ] Design API-key-level cooldown, quota health, and retry routing once multiple API keys are
       supported.
 - [ ] Design provider-level cooldown/health tracking once multiple providers are supported.
+- [ ] Continue extracting provider-specific request/response behavior into dedicated provider
+      modules so the queue and CLI layers depend only on the shared adapter interface instead of
+      accumulating compatibility branches.
 - [ ] Design provider-level proxy configuration and redaction rules.
 - [ ] Decide whether future multi-key attempt metadata stores a masked key label, a non-secret
       logical account id, or both.
+- [ ] Add `pic2api`-aware handling for `gpt-image-2 + size:auto` by selecting the nearest provider-
+      documented recommended size while keeping current preprocessing/crop-back behavior.
+- [ ] Evaluate whether provider-specific `402 insufficient balance` responses should stop the run in
+      single-provider/single-key mode.
+- [ ] Design future custom `WxH` input support that maps user-requested sizes to the nearest
+      provider-supported or provider-recommended size.
 - [ ] Design explicit resume-by-run-id without requiring the exact same full config hash.
 - [ ] Design a command/task fingerprint that excludes provider and API credential changes from
       resume identity while still validating compatible runtime execution settings.

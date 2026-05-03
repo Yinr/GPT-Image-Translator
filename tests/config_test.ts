@@ -43,6 +43,27 @@ Deno.test("loadConfig rejects invalid image option", async () => {
   await assertRejects(() => loadConfig(path), Error, "openai.image.size is invalid");
 });
 
+Deno.test("loadConfig accepts pic2api adapter mode", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  adapter: pic2api",
+      "  baseUrl: https://www.pic2api.com/v1",
+      "  apiKey: test-key",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.openai.adapter, "pic2api");
+});
+
 Deno.test("loadConfig accepts direct openai apiKey without apiKeyEnv", async () => {
   const path = await Deno.makeTempFile({ suffix: ".yaml" });
   await Deno.writeTextFile(
