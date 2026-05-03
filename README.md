@@ -13,6 +13,7 @@
 - 支持 `status`、`inspect`、`failed` 查询命令
 - 支持配置文件版本升级
 - 支持可选诊断日志
+- 支持可选长宽比补边预处理和裁剪回原图区域
 
 ## 环境要求
 
@@ -122,6 +123,23 @@ logging:
 ```
 
 日志文件会按 run id 写入配置的日志目录。
+
+## 长宽比预处理
+
+`gpt-image-2` 只支持固定画布尺寸。遇到非标准长宽比图片时，可以启用补边预处理，让程序先把原图居中放到最接近的支持比例画布中，再发送给接口：
+
+```yaml
+preprocess:
+  aspectPad:
+    enabled: true
+    fill: transparent
+    cropBackToOriginal: true
+    intermediateDir: .intermediate
+```
+
+启用后，程序会自动选择 `1024x1024`、`1024x1536` 或 `1536x1024` 作为请求 `size`。`cropBackToOriginal: true` 时，最终输出会裁剪回原图区域，未裁剪的接口输出会保留在 `outputDir/intermediateDir` 下，方便排查模型返回效果。
+
+默认配置中该功能关闭，保持原图直接提交给接口。
 
 ## 开发
 

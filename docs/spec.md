@@ -242,11 +242,10 @@ altered by the model. The preprocessing feature should reduce that risk by paddi
 to the nearest supported API ratio before the API call, while preserving the original pixels at
 their original scale.
 
-This feature is optional and disabled by default. When disabled, the current v0.1 behavior must stay
-unchanged: the original input image path is sent to the API and the configured `openai.image.size`
-behavior applies as it does now.
+This feature is optional and disabled by default. When disabled, the original input image path is
+sent to the API and the configured `openai.image.size` behavior applies as it does now.
 
-Planned configuration shape:
+Configuration shape:
 
 ```yaml
 preprocess:
@@ -419,25 +418,6 @@ Special handling:
 The current implementation assumes one provider and one active API key source per run. A later major
 version may expand this into a dedicated account-scheduling layer.
 
-Another future expansion is a dedicated local logging module for CLI diagnostics.
-
-Expected logging direction:
-
-- Add an internal logging module instead of adopting `@std/log` as a new long-term dependency.
-- Support configurable log levels such as `debug`, `info`, `warn`, and `error`.
-- Support optional file logging under a configurable directory, defaulting to `./logs`.
-- Keep log persistence disabled by default so basic CLI use remains quiet and simple.
-- Keep user-facing progress messages separate from lower-level diagnostic records where practical.
-
-Design constraints for that future work:
-
-- Log configuration should be explicit in YAML and preserve current behavior when disabled.
-- The logging module should be reusable by queue, storage, and provider code without forcing CLI
-  formatting concerns downward.
-- File logging should be safe on Windows and create directories lazily when needed.
-- The first implementation step should remain intentionally small: level filtering, optional file
-  sink, and a stable logger interface.
-
 Expected future direction:
 
 - Support multiple API keys for one provider without breaking the current single-key path.
@@ -462,18 +442,14 @@ Design constraints for that future work:
 ## Open Questions
 
 - Whether `gpt-image-2-2k` or `gpt-image-2-4k` should be exposed as presets.
-- Which `gpt-image-2` image parameters are supported by the official/compatible API, especially
-  `size`, `quality`, `background`, and `output_format`; supported options are now exposed in config,
-  with `auto` values omitted from the request payload.
 - For future multi-key scheduling, should attempt metadata store only a masked key label, or also a
   separate non-secret logical account id?
 - For future multi-provider support, should provider failover be automatic, policy-driven, or always
   explicitly configured?
 - For future key balancing, should scheduling remain simple round-robin at first, or account for
   cooldowns, quotas, and recent rate limits from the beginning?
-- For future logging, should file output be one file per run, one rolling shared file, or both?
-- For future logging, should progress output and diagnostic logs share one formatter, or remain
-  intentionally separate?
+- If diagnostic logging is enabled during dry runs, should it write files or only use
+  console/in-memory diagnostics?
 - Whether prompt should support per-directory or per-file overrides later.
 - Whether cancellation and pause controls are needed in the first CLI release or only for the future
   Web UI.

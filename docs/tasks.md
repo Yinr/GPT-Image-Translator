@@ -347,8 +347,8 @@ Processing flow:
 - [x] Padded image dimensions match the planner output.
 - [x] Fill mode supports transparent and white padding.
 - [x] Crop-back produces only a crop, not a resize.
-- [ ] Uncropped API output is retained under the configured intermediate directory when crop-back is
-      enabled. This is deferred to F5 because it requires queue/job-runner output wiring.
+- [x] Uncropped API output is retained under the configured intermediate directory when crop-back is
+      enabled through the queue/job-runner output wiring implemented in F5.
 - [x] Temporary files are cleaned up when safe, while durable intermediate outputs are preserved.
 
 **Verification:**
@@ -383,8 +383,8 @@ Status: implemented.
 - [x] Enabled preprocessing sets request `size` to the planner-selected API size.
 - [x] Crop-back mode writes the final cropped output to the normal output path.
 - [x] Crop-back mode also preserves the uncropped API output in the intermediate directory.
-- [ ] Attempts and output metadata clearly identify final output and any preserved intermediate
-      output. This is deferred to F6 because it requires query/storage visibility changes.
+- [x] Attempts and processing metadata clearly identify final output and any preserved intermediate
+      output through the query/storage visibility changes implemented in F6.
 
 **Verification:**
 
@@ -667,6 +667,8 @@ Longer-term target behavior:
 as a standalone module rather than relying on `@std/log`, because Deno marks `@std/log` as no longer
 recommended and likely removable in the future.
 
+Status: implemented.
+
 Design goals:
 
 - Keep user-facing progress output separate from diagnostic log persistence.
@@ -685,10 +687,10 @@ logging:
 
 **Acceptance criteria:**
 
-- Logging config shape is specified in spec and task docs.
-- The module boundary is defined so queue/core code can emit logs without owning CLI formatting.
-- The design explicitly rejects `@std/log` as the new default foundation.
-- Secret-handling rules for logs are documented.
+- [x] Logging config shape is specified in spec and task docs.
+- [x] The module boundary is defined so queue/core code can emit logs without owning CLI formatting.
+- [x] The design explicitly rejects `@std/log` as the new default foundation.
+- [x] Secret-handling rules for logs are documented.
 
 **Verification:**
 
@@ -708,6 +710,8 @@ logging:
 **Description:** Extend configuration types, defaults, and validation to support an opt-in logging
 section.
 
+Status: implemented.
+
 Target behavior:
 
 - Logging is disabled by default.
@@ -717,10 +721,10 @@ Target behavior:
 
 **Acceptance criteria:**
 
-- Config types include a logging section.
-- Defaults preserve current non-logging behavior.
-- Validation rejects unknown levels and empty log directory values.
-- `config.example.yaml` documents the feature in Chinese.
+- [x] Config types include a logging section.
+- [x] Defaults preserve current non-logging behavior.
+- [x] Validation rejects unknown levels and empty log directory values.
+- [x] `config.example.yaml` documents the feature in Chinese.
 
 **Verification:**
 
@@ -742,6 +746,8 @@ Target behavior:
 
 **Description:** Build a small internal logger module with level filtering and optional file output.
 
+Status: implemented.
+
 Initial target behavior:
 
 - Support `debug`, `info`, `warn`, and `error` levels.
@@ -751,10 +757,10 @@ Initial target behavior:
 
 **Acceptance criteria:**
 
-- The logger module has a narrow, reusable interface.
-- Disabled logging avoids creating files or directories.
-- File logging works on Windows and writes deterministic text output.
-- Logger tests cover level filtering and disabled behavior.
+- [x] The logger module has a narrow, reusable interface.
+- [x] Disabled logging avoids creating files or directories.
+- [x] File logging works on Windows and writes deterministic text output.
+- [x] Logger tests cover level filtering and disabled behavior.
 
 **Verification:**
 
@@ -773,6 +779,8 @@ Initial target behavior:
 **Description:** Wire the logger module into CLI execution, queue execution, and key operational
 events while preserving readable user-facing progress output.
 
+Status: implemented.
+
 Target behavior:
 
 - Existing progress output remains available to the user.
@@ -782,10 +790,10 @@ Target behavior:
 
 **Acceptance criteria:**
 
-- CLI execution can create and pass a logger instance through the runtime flow.
-- Logging remains optional and does not break existing tests when disabled.
-- Run/job lifecycle events emit diagnostic logs through the new module.
-- Secret values are not included in emitted log lines.
+- [x] CLI execution can create and pass a logger instance through the runtime flow.
+- [x] Logging remains optional and does not break existing tests when disabled.
+- [x] Run/job lifecycle events emit diagnostic logs through the new module.
+- [x] Secret values are not included in emitted log lines.
 
 **Verification:**
 
@@ -809,6 +817,8 @@ Target behavior:
 **Description:** Decide how log files should be organized for real usage and whether they should be
 per-run, shared, or rotated.
 
+Status: implemented.
+
 Questions this task should settle:
 
 - Should logs be written to one file per run, one shared file, or a simple rolling scheme?
@@ -817,9 +827,9 @@ Questions this task should settle:
 
 **Acceptance criteria:**
 
-- File naming and retention behavior are documented.
-- Operational tradeoffs are documented for Windows/local CLI usage.
-- The decision does not require immediate implementation of complex rotation.
+- [x] File naming and retention behavior are documented.
+- [x] Operational tradeoffs are documented for Windows/local CLI usage.
+- [x] The decision does not require immediate implementation of complex rotation.
 
 **Verification:**
 
@@ -839,6 +849,8 @@ Questions this task should settle:
 files without losing comments by default. Missing `configVersion` should be treated as version `0`,
 which represents configs created before versioning existed.
 
+Status: implemented.
+
 Target behavior:
 
 - Add `configVersion` to the config model and example config.
@@ -857,13 +869,13 @@ Full-update behavior:
 
 **Acceptance criteria:**
 
-- Config upgrade logic lives in a dedicated module.
-- Migrations are represented as versioned steps rather than ad-hoc text variables alone.
-- `configVersion` missing is treated as version `0`.
-- Safe mode preserves existing comments and content outside migrated insertions.
-- Full-update behavior is explicit and guarded.
-- Tests cover version `0`, missing version, full-update safety, validation before write, and
-  dry-run.
+- [x] Config upgrade logic lives in a dedicated module.
+- [x] Migrations are represented as versioned steps rather than ad-hoc text variables alone.
+- [x] `configVersion` missing is treated as version `0`.
+- [x] Safe mode preserves existing comments and content outside migrated insertions.
+- [x] Full-update behavior is explicit and guarded.
+- [x] Tests cover version `0`, missing version, full-update safety, validation before write, and
+      dry-run.
 
 **Verification:**
 
@@ -889,23 +901,14 @@ Full-update behavior:
 
 - Should `gpt-image-2-2k` and `gpt-image-2-4k` be exposed as model presets or remain plain model
   strings?
-- Which image processing library should be used for padding/cropping on Deno and Windows?
-- Should transparent padding automatically force `outputFormat: png` or only validate/warn?
-- Should intermediate preprocessed API inputs be preserved, or only uncropped API outputs?
-- Should crop-back metadata be stored in the existing `outputs` table or a new processing-metadata
-  table?
 - If `output_format` is missing, should fallback detection silently infer the extension, warn in
   logs/query output, or require opt-in configuration?
 - Should multi-key scheduling metadata live in attempts, a separate account-health table, or both?
 - For multi-provider support, should provider failover be automatic or require explicit routing
   policy?
 - Should key balancing be purely round-robin, weighted, cooldown-aware, or usage-quota-aware?
-- Should local file logging default to one log file per run, a shared append-only file, or a simple
-  rolling strategy?
 - Should dry-run mode write diagnostic log files when logging is enabled, or only emit in-memory /
   console diagnostics?
-- Should future config migrations support safe insertion of missing nested fields inside existing
-  blocks, or should nested repair require `--full-update`?
 - Should prompt support per-directory or per-file overrides later?
 - Are cancellation and pause controls needed in the first CLI release or only for the future Web UI?
 
