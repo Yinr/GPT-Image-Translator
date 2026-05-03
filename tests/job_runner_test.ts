@@ -1,7 +1,7 @@
 import { assertEquals, assertExists } from "@std/assert";
 import { join } from "@std/path";
-import { Image } from "@matmen/imagescript";
 import { type ImageEditClientLike, runJob } from "../src/queue/job-runner.ts";
+import { loadImageScript } from "../src/core/imagescript.ts";
 import { ApiError } from "../src/openai/error-classifier.ts";
 import type { JobRecord, RetryConfig } from "../src/shared/types.ts";
 import { openMemoryDatabase } from "../src/storage/db.ts";
@@ -133,6 +133,7 @@ Deno.test("runJob preserves planned output path when formatFromApi is false", as
 Deno.test("runJob sends padded image and selected size when aspectPad is enabled", async () => {
   const context = createContext();
   try {
+    const { Image } = await loadImageScript();
     const dir = await Deno.makeTempDir();
     const inputPath = join(dir, "input.png");
     const outputPath = join(dir, "output.png");
@@ -192,6 +193,7 @@ Deno.test("runJob sends padded image and selected size when aspectPad is enabled
 Deno.test("runJob crops final output and preserves uncropped output when crop-back is enabled", async () => {
   const context = createContext();
   try {
+    const { Image } = await loadImageScript();
     const dir = await Deno.makeTempDir();
     const inputPath = join(dir, "input.png");
     const outputPath = join(dir, "nested", "output.png");
@@ -400,6 +402,7 @@ async function writeSolidImage(
   height: number,
   color: number,
 ): Promise<void> {
+  const { Image } = await loadImageScript();
   const image = new Image(width, height);
   image.fill(color);
   await Deno.writeFile(path, await image.encode());

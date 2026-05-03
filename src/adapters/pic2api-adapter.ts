@@ -1,5 +1,5 @@
-import { Image } from "@matmen/imagescript";
 import type { ImageEditRequest, ImageRequestSize } from "../shared/types.ts";
+import { loadImageScript } from "../core/imagescript.ts";
 import { OpenAICompatibleBaseAdapter } from "./base/openai-compatible-adapter.ts";
 import type { ResolvedRequestOptions } from "./base/openai-compatible-adapter.ts";
 
@@ -66,6 +66,7 @@ async function selectPic2ApiSize(
   imageBytes: Uint8Array,
   quality: Pic2ApiAdapter["config"]["image"]["quality"],
 ): Promise<ImageRequestSize> {
+  const { Image } = await loadImageScript();
   const source = await Image.decode(imageBytes);
   const sourceRatio = source.width / source.height;
   const candidates = PIC2API_SIZE_POOLS[pic2ApiTierForQuality(quality)].map((size) => {

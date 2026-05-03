@@ -1,11 +1,11 @@
 import { assertEquals, assertInstanceOf, assertThrows } from "@std/assert";
-import { Image } from "@matmen/imagescript";
 import { join } from "@std/path";
 import { normalizeBaseUrl } from "../src/adapters/base/openai-compatible-adapter.ts";
 import { OpenAIAdapter } from "../src/adapters/openai-adapter.ts";
 import { ApiError } from "../src/openai/error-classifier.ts";
 import { Gpt2ApiAdapter } from "../src/adapters/gpt2api-adapter.ts";
 import { Pic2ApiAdapter } from "../src/adapters/pic2api-adapter.ts";
+import { loadImageScript } from "../src/core/imagescript.ts";
 import type { OpenAIConfig } from "../src/shared/types.ts";
 
 const config: OpenAIConfig = {
@@ -356,6 +356,7 @@ Deno.test("Pic2ApiAdapter keeps explicit request size", async () => {
 });
 
 async function createPngPlaceholder(width: number, height: number): Promise<Uint8Array> {
+  const { Image } = await loadImageScript();
   const image = new Image(width, height);
   image.fill(0xffffffff);
   return await image.encode();

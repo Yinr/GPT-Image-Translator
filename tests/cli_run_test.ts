@@ -1,8 +1,8 @@
 import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
-import { Image } from "@matmen/imagescript";
 import { execute } from "../src/cli/run.ts";
 import { defaultConfig } from "../src/config/defaults.ts";
+import { loadImageScript } from "../src/core/imagescript.ts";
 import { createConfigHash } from "../src/core/run-id.ts";
 import type { ImageEditClientLike } from "../src/queue/job-runner.ts";
 import { openDatabase } from "../src/storage/db.ts";
@@ -443,6 +443,7 @@ async function writeSolidImage(
   height: number,
   color: number,
 ): Promise<void> {
+  const { Image } = await loadImageScript();
   const image = new Image(width, height);
   image.fill(color);
   await Deno.writeFile(path, await image.encode());

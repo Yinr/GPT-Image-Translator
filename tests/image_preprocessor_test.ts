@@ -1,15 +1,18 @@
 import { join } from "@std/path";
 import { assertEquals, assertRejects } from "@std/assert";
-import { Image } from "@matmen/imagescript";
 import {
   cropApiOutputToOriginal,
   prepareAspectPaddedImage,
 } from "../src/core/image-preprocessor.ts";
+import { loadImageScript } from "../src/core/imagescript.ts";
 
 const RED = 0xff0000ff;
 const BLUE = 0x0000ffff;
 const TRANSPARENT = 0x00000000;
 const WHITE = 0xffffffff;
+
+type ImageModule = Awaited<ReturnType<typeof loadImageScript>>;
+type DecodedImage = Awaited<ReturnType<ImageModule["Image"]["decode"]>>;
 
 Deno.test("prepareAspectPaddedImage pads with transparent background and cleans up", async () => {
   const dir = await Deno.makeTempDir();
@@ -48,6 +51,7 @@ Deno.test("prepareAspectPaddedImage supports white padding", async () => {
 });
 
 Deno.test("cropApiOutputToOriginal crops mapped source rectangle without resizing", async () => {
+  const { Image } = await loadImageScript();
   const output = new Image(800, 1200);
   output.fill(WHITE);
   const sourceRegion = new Image(800, 1000);
@@ -72,6 +76,7 @@ Deno.test("cropApiOutputToOriginal crops mapped source rectangle without resizin
 });
 
 Deno.test("cropApiOutputToOriginal maps crop rectangle when API output size differs", async () => {
+  const { Image } = await loadImageScript();
   const output = new Image(400, 600);
   output.fill(WHITE);
   const sourceRegion = new Image(400, 500);
@@ -100,11 +105,13 @@ async function writeSolidImage(
   height: number,
   color: number,
 ): Promise<void> {
+  const { Image } = await loadImageScript();
   const image = new Image(width, height);
   image.fill(color);
   await Deno.writeFile(path, await image.encode());
 }
 
-async function readImage(path: string): Promise<Image> {
+async function readImage(path: string): Promise<DecodedImage> {
+  const { Image } = await loadImageScript();
   return await Image.decode(await Deno.readFile(path));
 }
