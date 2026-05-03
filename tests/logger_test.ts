@@ -35,7 +35,7 @@ Deno.test("logger filters by configured level", async () => {
   const writes: string[] = [];
   const logger = createLogger({
     config: enabledConfig,
-    now: () => new Date("2026-05-02T00:00:00.000Z"),
+    now: () => new Date(2026, 4, 2, 0, 0, 0),
     writeTextFile: (_path, data) => {
       writes.push(String(data));
       return Promise.resolve();
@@ -47,7 +47,7 @@ Deno.test("logger filters by configured level", async () => {
   await logger.info("info message", { runId: "run-1" });
 
   assertEquals(writes, [
-    '2026-05-02T00:00:00.000Z INFO info message {"runId":"run-1"}\n',
+    '[2026-05-02 00:00:00] [INFO] info message {"runId":"run-1"}\n',
   ]);
 });
 
@@ -57,7 +57,7 @@ Deno.test("logger creates directory once before file logging", async () => {
   const logger = createLogger({
     config: enabledConfig,
     runId: "run-1",
-    now: () => new Date("2026-05-02T00:00:00.000Z"),
+    now: () => new Date(2026, 4, 2, 8, 30, 45),
     mkdir: (path) => {
       mkdirs.push(String(path));
       return Promise.resolve();
@@ -73,8 +73,8 @@ Deno.test("logger creates directory once before file logging", async () => {
 
   assertEquals(mkdirs, ["./logs"]);
   assertEquals(writes, [
-    "logs\\run-1.log:2026-05-02T00:00:00.000Z INFO first\n",
-    "logs\\run-1.log:2026-05-02T00:00:00.000Z WARN second\n",
+    "logs\\20260502_083045_run-1.log:[2026-05-02 08:30:45] [INFO] first\n",
+    "logs\\20260502_083045_run-1.log:[2026-05-02 08:30:45] [WARN] second\n",
   ]);
 });
 
@@ -82,15 +82,15 @@ Deno.test("logger supports console sink", async () => {
   const logs: string[] = [];
   const logger = createLogger({
     config: { ...enabledConfig, file: false, console: true },
-    now: () => new Date("2026-05-02T00:00:00.000Z"),
+    now: () => new Date(2026, 4, 2, 0, 0, 0),
     consoleLog: (message) => logs.push(message),
   });
 
   await logger.info("visible");
 
-  assertEquals(logs, ["2026-05-02T00:00:00.000Z INFO visible"]);
+  assertEquals(logs, ["[2026-05-02 00:00:00] [INFO] visible"]);
 });
 
 Deno.test("logFilePath sanitizes run id", () => {
-  assertEquals(logFilePath("./logs", "run:1/2"), "logs\\run_1_2.log");
+  assertEquals(logFilePath("./logs", "run:1/2", () => new Date(2026, 4, 2, 8, 30, 45)), "logs\\20260502_083045_run_1_2.log");
 });

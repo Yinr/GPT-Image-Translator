@@ -104,11 +104,11 @@ Deno.test("execute writes diagnostic log file when logging is enabled", async ()
     },
   });
 
-  const text = await Deno.readTextFile(join(logDir, `${result.runId}.log`));
+  const text = await Deno.readTextFile(result.logFile!);
 
-  assertEquals(text.includes("INFO Run started"), true);
-  assertEquals(text.includes("INFO Job completed"), true);
-  assertEquals(text.includes("INFO Run finished"), true);
+  assertEquals(text.includes("[INFO] Run started"), true);
+  assertEquals(text.includes("[INFO] Job completed"), true);
+  assertEquals(text.includes("[INFO] Run finished"), true);
 });
 
 Deno.test("execute reuses resumable run when resume is enabled", async () => {

@@ -24,6 +24,7 @@ export interface ExecuteOptions {
 
 export interface ExecuteResult {
   runId?: string;
+  logFile?: string;
   resumed?: boolean;
   totalImages: number;
   plannedJobs: number;
@@ -135,6 +136,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       await logger.info("Run completed with no runnable jobs", { runId });
       return {
         runId,
+        logFile: logger.filePath,
         resumed,
         totalImages: images.length,
         plannedJobs: images.length,
@@ -255,6 +257,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 
     return {
       runId,
+      logFile: logger.filePath,
       resumed,
       totalImages: images.length,
       plannedJobs: images.length,

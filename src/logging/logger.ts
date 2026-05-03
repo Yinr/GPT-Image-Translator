@@ -13,6 +13,7 @@ export interface Logger {
   info(message: string, context?: LogContext): Promise<void>;
   warn(message: string, context?: LogContext): Promise<void>;
   error(message: string, context?: LogContext): Promise<void>;
+  filePath?: string;
 }
 
 export type LogContext = Record<string, unknown>;
@@ -39,11 +40,14 @@ export function logFilePath(
   runId?: string,
   now: () => Date = () => new Date(),
 ): string {
-  const fileName = runId ? `${safeFilePart(runId)}.log` : `${timestampFilePart(now())}.log`;
+  const ts = timestampFilePart(now());
+  const fileName = runId ? `${ts}_${safeFilePart(runId)}.log` : `${ts}.log`;
   return join(dir, fileName);
 }
 
 class NoopLogger implements Logger {
+  filePath?: string;
+
   debug(): Promise<void> {
     return Promise.resolve();
   }
@@ -62,13 +66,13 @@ class NoopLogger implements Logger {
 }
 
 class DefaultLogger implements Logger {
+  readonly filePath: string;
   private readonly now: () => Date;
   private readonly writeTextFile: typeof Deno.writeTextFile;
   private readonly mkdir: typeof Deno.mkdir;
   private readonly consoleLog: (message: string) => void;
   private readonly consoleWarn: (message: string) => void;
   private readonly consoleError: (message: string) => void;
-  private readonly filePath: string;
   private directoryReady = false;
 
   constructor(private readonly options: CreateLoggerOptions) {
@@ -136,11 +140,30 @@ function formatLogLine(
   const contextText = context && Object.keys(context).length > 0
     ? ` ${JSON.stringify(context)}`
     : "";
-  return `${date.toISOString()} ${level.toUpperCase()} ${message}${contextText}`;
+  return `[${formatLocalTimestamp(date)}] [${level.toUpperCase()}] ${message}${contextText}`;
+}
+
+function localDateParts(date: Date): {
+  y: string; M: string; d: string; h: string; m: string; s: string;
+} {
+  return {
+    y: String(date.getFullYear()),
+    M: String(date.getMonth() + 1).padStart(2, "0"),
+    d: String(date.getDate()).padStart(2, "0"),
+    h: String(date.getHours()).padStart(2, "0"),
+    m: String(date.getMinutes()).padStart(2, "0"),
+    s: String(date.getSeconds()).padStart(2, "0"),
+  };
+}
+
+function formatLocalTimestamp(date: Date): string {
+  const { y, M, d, h, m, s } = localDateParts(date);
+  return `${y}-${M}-${d} ${h}:${m}:${s}`;
 }
 
 function timestampFilePart(date: Date): string {
-  return date.toISOString().replace(/[:.]/g, "-");
+  const { y, M, d, h, m, s } = localDateParts(date);
+  return `${y}${M}${d}_${h}${m}${s}`;
 }
 
 function safeFilePart(value: string): string {
