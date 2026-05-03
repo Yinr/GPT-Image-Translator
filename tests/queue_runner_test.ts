@@ -77,6 +77,87 @@ Deno.test("runQueue processes runnable jobs and updates run status", async () =>
   }
 });
 
+Deno.test("runQueue refills an available concurrency slot as soon as a job finishes", async () => {
+  const db = openMemoryDatabase();
+  try {
+    const runStore = new RunStore(db);
+    const jobStore = new JobStore(db);
+    const attemptStore = new AttemptStore(db);
+    const outputStore = new OutputStore(db);
+    const outputDir = await Deno.makeTempDir();
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runStore.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    for (const inputPath of ["a", "b", "c"]) {
+      jobStore.upsert({
+        id: `job-${inputPath}`,
+        runId: "run-1",
+        inputPath,
+        outputPath: join(outputDir, `${inputPath}.png`),
+        now,
+      });
+    }
+
+    const started: string[] = [];
+    const deferred = new Map<string, ReturnType<typeof createDeferred<void>>>();
+    const client: ImageEditClientLike = {
+      editImage: async (request) => {
+        const gate = deferred.get(request.imagePath)!;
+        await gate.promise;
+        return { bytes: new Uint8Array([1]), outputFormat: "png" };
+      },
+    };
+    for (const inputPath of ["a", "b", "c"]) deferred.set(inputPath, createDeferred<void>());
+
+    const summaryPromise = runQueue({
+      runId: "run-1",
+      prompt: "translate",
+      concurrency: 2,
+      minDelayMs: 0,
+      failFast: false,
+      formatFromApi: true,
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
+      client,
+      runStore,
+      jobStore,
+      attemptStore,
+      outputStore,
+      now: () => now,
+      sleep: () => Promise.resolve(),
+      onJobStart: ({ job }) => {
+        started.push(job.inputPath);
+      },
+    });
+
+    await waitFor(() => started.length === 2);
+    assertEquals(started, ["a", "b"]);
+
+    deferred.get("a")!.resolve();
+    await waitFor(() => started.length === 3);
+    assertEquals(started, ["a", "b", "c"]);
+
+    deferred.get("b")!.resolve();
+    deferred.get("c")!.resolve();
+    const summary = await summaryPromise;
+
+    assertEquals(summary.processed, 3);
+    assertEquals(summary.succeeded, 3);
+  } finally {
+    db.close();
+  }
+});
+
 Deno.test("runQueue stops after current job when graceful stop is requested", async () => {
   const db = openMemoryDatabase();
   try {
@@ -156,6 +237,101 @@ Deno.test("runQueue stops after current job when graceful stop is requested", as
     assertEquals(run?.finishedAt, undefined);
     assertEquals(firstJob?.status, "succeeded");
     assertEquals(secondJob?.status, "pending");
+  } finally {
+    db.close();
+  }
+});
+
+Deno.test("runQueue waits for all in-flight jobs after graceful stop is requested", async () => {
+  const db = openMemoryDatabase();
+  try {
+    const runStore = new RunStore(db);
+    const jobStore = new JobStore(db);
+    const attemptStore = new AttemptStore(db);
+    const outputStore = new OutputStore(db);
+    const outputDir = await Deno.makeTempDir();
+    const now = "2026-05-01T00:00:00.000Z";
+    let stopRequested = false;
+
+    runStore.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    for (const inputPath of ["a", "b", "c"]) {
+      jobStore.upsert({
+        id: `job-${inputPath}`,
+        runId: "run-1",
+        inputPath,
+        outputPath: join(outputDir, `${inputPath}.png`),
+        now,
+      });
+    }
+
+    const started: string[] = [];
+    const finished: string[] = [];
+    const deferred = new Map<string, ReturnType<typeof createDeferred<void>>>();
+    for (const inputPath of ["a", "b"]) deferred.set(inputPath, createDeferred<void>());
+    const client: ImageEditClientLike = {
+      editImage: async (request) => {
+        await deferred.get(request.imagePath)!.promise;
+        finished.push(request.imagePath);
+        return { bytes: new Uint8Array([1]), outputFormat: "png" };
+      },
+    };
+
+    const summaryPromise = runQueue({
+      runId: "run-1",
+      prompt: "translate",
+      concurrency: 2,
+      minDelayMs: 0,
+      failFast: false,
+      formatFromApi: true,
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
+      client,
+      runStore,
+      jobStore,
+      attemptStore,
+      outputStore,
+      now: () => now,
+      sleep: () => Promise.resolve(),
+      stopRequested: () => stopRequested,
+      onJobStart: ({ job }) => {
+        started.push(job.inputPath);
+      },
+    });
+
+    await waitFor(() => started.length === 2);
+    assertEquals(started, ["a", "b"]);
+
+    stopRequested = true;
+    deferred.get("a")!.resolve();
+    await waitFor(() => finished.length === 1);
+    assertEquals(started, ["a", "b"]);
+
+    deferred.get("b")!.resolve();
+    const summary = await summaryPromise;
+    const run = runStore.get("run-1");
+    const firstJob = jobStore.findByInputPath("run-1", "a");
+    const secondJob = jobStore.findByInputPath("run-1", "b");
+    const thirdJob = jobStore.findByInputPath("run-1", "c");
+
+    assertEquals(finished, ["a", "b"]);
+    assertEquals(summary.processed, 2);
+    assertEquals(summary.succeeded, 2);
+    assertEquals(summary.stopped, true);
+    assertEquals(summary.stopReason, "interrupted");
+    assertEquals(run?.status, "running");
+    assertEquals(firstJob?.status, "succeeded");
+    assertEquals(secondJob?.status, "succeeded");
+    assertEquals(thirdJob?.status, "pending");
   } finally {
     db.close();
   }
@@ -404,3 +580,25 @@ Deno.test("runQueue uses longest cooldown from concurrent retryable failures", a
     db.close();
   }
 });
+
+function createDeferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Timed out waiting for condition");
+}
