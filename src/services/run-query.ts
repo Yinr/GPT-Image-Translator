@@ -3,11 +3,13 @@ import type {
   JobRecord,
   JobStatus,
   OutputRecord,
+  ProcessingMetadataRecord,
   RunRecord,
 } from "../shared/types.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
+import { ProcessingMetadataStore } from "../storage/processing-metadata-store.ts";
 import { RunStore } from "../storage/run-store.ts";
 
 export interface RunSummary {
@@ -37,6 +39,18 @@ export interface OutputDetail {
   createdAt: string;
 }
 
+export interface ProcessingMetadataDetail {
+  enabled: boolean;
+  apiSize?: string;
+  source?: { width: number; height: number };
+  canvas?: { width: number; height: number };
+  sourceRect?: { x: number; y: number; width: number; height: number };
+  fill?: string;
+  cropBackToOriginal: boolean;
+  uncroppedOutputPath?: string;
+  createdAt: string;
+}
+
 export interface RunDetail extends RunSummary {
   jobs: JobDetail[];
 }
@@ -55,6 +69,7 @@ export interface JobDetail {
   updatedAt: string;
   completedAt?: string;
   output?: OutputDetail;
+  processing?: ProcessingMetadataDetail;
 }
 
 export interface JobListFilter {
@@ -68,6 +83,7 @@ export class RunQueryService {
     private readonly jobs: JobStore,
     private readonly attempts: AttemptStore,
     private readonly outputs: OutputStore,
+    private readonly processingMetadata?: ProcessingMetadataStore,
   ) {}
 
   getRunDetail(runId: string): RunDetail | undefined {
@@ -115,6 +131,7 @@ export class RunQueryService {
       updatedAt: job.updatedAt,
       completedAt: job.completedAt,
       output: toOutputDetail(this.outputs.getLatestByJob(job.id)),
+      processing: toProcessingMetadataDetail(this.processingMetadata?.getByJob(job.id)),
     };
   }
 }
@@ -150,4 +167,42 @@ function toOutputDetail(output: OutputRecord | undefined): OutputDetail | undefi
     usageJson: output.usageJson,
     createdAt: output.createdAt,
   };
+}
+
+function toProcessingMetadataDetail(
+  metadata: ProcessingMetadataRecord | undefined,
+): ProcessingMetadataDetail | undefined {
+  if (!metadata) return undefined;
+
+  return {
+    enabled: metadata.enabled,
+    apiSize: metadata.apiSize,
+    source: sizeDetail(metadata.sourceWidth, metadata.sourceHeight),
+    canvas: sizeDetail(metadata.canvasWidth, metadata.canvasHeight),
+    sourceRect: rectDetail(
+      metadata.sourceRectX,
+      metadata.sourceRectY,
+      metadata.sourceRectWidth,
+      metadata.sourceRectHeight,
+    ),
+    fill: metadata.fill,
+    cropBackToOriginal: metadata.cropBackToOriginal,
+    uncroppedOutputPath: metadata.uncroppedOutputPath,
+    createdAt: metadata.createdAt,
+  };
+}
+
+function sizeDetail(width: number | undefined, height: number | undefined) {
+  return width === undefined || height === undefined ? undefined : { width, height };
+}
+
+function rectDetail(
+  x: number | undefined,
+  y: number | undefined,
+  width: number | undefined,
+  height: number | undefined,
+) {
+  return x === undefined || y === undefined || width === undefined || height === undefined
+    ? undefined
+    : { x, y, width, height };
 }

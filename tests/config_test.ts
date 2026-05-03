@@ -4,7 +4,7 @@ import { loadConfig } from "../src/config/load.ts";
 Deno.test("loadConfig loads example config with defaults", async () => {
   const config = await loadConfig("config.example.yaml");
 
-  assertEquals(config.configVersion, 1);
+  assertEquals(config.configVersion, 2);
   assertEquals(config.openai.model, "gpt-image-2");
   assertEquals(config.queue.concurrency, 1);
   assertEquals(config.scan.extensions.includes(".jpg"), true);
@@ -13,6 +13,10 @@ Deno.test("loadConfig loads example config with defaults", async () => {
   assertEquals(config.logging.enabled, false);
   assertEquals(config.logging.level, "info");
   assertEquals(config.logging.dir, "./logs");
+  assertEquals(config.preprocess.aspectPad.enabled, false);
+  assertEquals(config.preprocess.aspectPad.fill, "transparent");
+  assertEquals(config.preprocess.aspectPad.cropBackToOriginal, false);
+  assertEquals(config.preprocess.aspectPad.intermediateDir, ".intermediate");
 });
 
 Deno.test("loadConfig rejects missing prompt", async () => {
@@ -118,4 +122,67 @@ Deno.test("loadConfig rejects invalid logging level", async () => {
   );
 
   await assertRejects(() => loadConfig(path), Error, "logging.level is invalid");
+});
+
+Deno.test("loadConfig normalizes and validates aspectPad config", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "preprocess:",
+      "  aspectPad:",
+      "    enabled: true",
+      "    fill: WHITE",
+      "    cropBackToOriginal: true",
+      "    intermediateDir: '  crops  '",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.preprocess.aspectPad.enabled, true);
+  assertEquals(config.preprocess.aspectPad.fill, "white");
+  assertEquals(config.preprocess.aspectPad.cropBackToOriginal, true);
+  assertEquals(config.preprocess.aspectPad.intermediateDir, "crops");
+});
+
+Deno.test("loadConfig rejects invalid aspectPad fill", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "preprocess:",
+      "  aspectPad:",
+      "    fill: black",
+    ].join("\n"),
+  );
+
+  await assertRejects(() => loadConfig(path), Error, "preprocess.aspectPad.fill is invalid");
+});
+
+Deno.test("loadConfig rejects unsafe aspectPad intermediateDir", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "preprocess:",
+      "  aspectPad:",
+      "    intermediateDir: ../outside",
+    ].join("\n"),
+  );
+
+  await assertRejects(
+    () => loadConfig(path),
+    Error,
+    "preprocess.aspectPad.intermediateDir must be a safe relative path inside outputDir",
+  );
 });

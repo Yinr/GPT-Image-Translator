@@ -1,6 +1,6 @@
 import type { AppConfig } from "../shared/types.ts";
 
-export const CURRENT_CONFIG_VERSION = 1;
+export const CURRENT_CONFIG_VERSION = 2;
 
 export const defaultConfig: AppConfig = {
   configVersion: CURRENT_CONFIG_VERSION,
@@ -42,6 +42,14 @@ export const defaultConfig: AppConfig = {
   },
   storage: {
     sqlitePath: "./state/translator.db",
+  },
+  preprocess: {
+    aspectPad: {
+      enabled: false,
+      fill: "transparent",
+      cropBackToOriginal: false,
+      intermediateDir: ".intermediate",
+    },
   },
   logging: {
     enabled: false,

@@ -14,18 +14,19 @@ Deno.test("upgradeConfigText treats missing configVersion as version 0", () => {
 
   assertEquals(result.changed, true);
   assertEquals(result.fromVersion, 0);
-  assertEquals(result.toVersion, 1);
-  assertEquals(result.appendedKeys, ["configVersion", "logging"]);
+  assertEquals(result.toVersion, 2);
+  assertEquals(result.appendedKeys, ["configVersion", "logging", "preprocess"]);
   assertEquals(
-    result.text.startsWith("# 配置文件版本。用于未来安全补全旧配置文件\nconfigVersion: 1"),
+    result.text.startsWith("# 配置文件版本。用于未来安全补全旧配置文件\nconfigVersion: 2"),
     true,
   );
   assertEquals(result.text.includes("# my config"), true);
-  assertEquals(result.text.includes("configVersion: 1"), true);
+  assertEquals(result.text.includes("configVersion: 2"), true);
   assertEquals(result.text.includes("logging:"), true);
+  assertEquals(result.text.includes("preprocess:"), true);
 });
 
-Deno.test("upgradeConfigText updates explicit configVersion 0", () => {
+Deno.test("upgradeConfigText updates explicit configVersion 0 to current version", () => {
   const text = [
     "configVersion: 0",
     "inputDir: ./input",
@@ -36,18 +37,46 @@ Deno.test("upgradeConfigText updates explicit configVersion 0", () => {
   const result = upgradeConfigText(text);
 
   assertEquals(result.fromVersion, 0);
-  assertEquals(result.toVersion, 1);
-  assertEquals(result.text.includes("configVersion: 1"), true);
+  assertEquals(result.toVersion, 2);
+  assertEquals(result.text.includes("configVersion: 2"), true);
   assertEquals(result.text.includes("configVersion: 0"), false);
   assertEquals(result.text.includes("logging:"), true);
+  assertEquals(result.text.includes("preprocess:"), true);
 });
 
-Deno.test("upgradeConfigText does nothing when known blocks exist", () => {
+Deno.test("upgradeConfigText upgrades version 1 config with preprocess block", () => {
   const text = [
     "configVersion: 1",
     "inputDir: ./input",
     "outputDir: ./output",
     "prompt: translate",
+    "logging:",
+    "  enabled: false",
+  ].join("\n");
+
+  const result = upgradeConfigText(text);
+
+  assertEquals(result.changed, true);
+  assertEquals(result.fromVersion, 1);
+  assertEquals(result.toVersion, 2);
+  assertEquals(result.appendedKeys, ["configVersion", "preprocess"]);
+  assertEquals(result.text.includes("configVersion: 2"), true);
+  assertEquals(result.text.includes("preprocess:"), true);
+  assertEquals(result.text.includes("intermediateDir: .intermediate"), true);
+});
+
+Deno.test("upgradeConfigText does nothing when known blocks exist", () => {
+  const text = [
+    "configVersion: 2",
+    "inputDir: ./input",
+    "outputDir: ./output",
+    "prompt: translate",
+    "preprocess:",
+    "  aspectPad:",
+    "    enabled: false",
+    "    fill: transparent",
+    "    cropBackToOriginal: false",
+    "    intermediateDir: .intermediate",
     "logging:",
     "  enabled: false",
   ].join("\n");
@@ -86,10 +115,11 @@ Deno.test("upgradeConfigText full update rewrites complete config when allowed",
 
   assertEquals(result.fullUpdate, true);
   assertEquals(result.fromVersion, 0);
-  assertEquals(result.toVersion, 1);
+  assertEquals(result.toVersion, 2);
   assertEquals(result.text.includes("# comment"), false);
-  assertEquals(result.text.includes("configVersion: 1"), true);
+  assertEquals(result.text.includes("configVersion: 2"), true);
   assertEquals(result.text.includes("logging:"), true);
+  assertEquals(result.text.includes("preprocess:"), true);
   assertEquals(result.text.includes("enabled: false"), true);
 });
 

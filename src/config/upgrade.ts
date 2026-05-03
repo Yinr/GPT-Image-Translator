@@ -34,9 +34,6 @@ interface UpgradeState {
   appendedKeys: string[];
 }
 
-const CONFIG_VERSION_BLOCK = `# 配置文件版本。用于未来安全补全旧配置文件
-configVersion: 1`;
-
 const LOGGING_BLOCK = `# 诊断日志配置。默认关闭，不影响命令行进度输出
 logging:
   # 是否启用诊断日志记录。可选：true / false
@@ -54,6 +51,21 @@ logging:
   # 是否写入日志文件
   file: true`;
 
+const PREPROCESS_BLOCK = `# 图片预处理配置。默认关闭，保持原图直接提交给接口
+preprocess:
+  aspectPad:
+    # 是否启用长宽比补边预处理。可选：true / false
+    enabled: false
+
+    # 补边颜色。可选：transparent / white
+    fill: transparent
+
+    # 是否在接口返回后裁剪回原图区域。可选：true / false
+    cropBackToOriginal: false
+
+    # 保留未裁剪接口输出的中间目录，必须是 outputDir 内的相对路径
+    intermediateDir: .intermediate`;
+
 const MIGRATIONS: ConfigMigration[] = [
   {
     fromVersion: 0,
@@ -61,7 +73,7 @@ const MIGRATIONS: ConfigMigration[] = [
     name: "add configVersion and logging defaults",
     apply: (state) => {
       if (!Object.hasOwn(state.parsed, "configVersion")) {
-        state.text = prependBlock(state.text, CONFIG_VERSION_BLOCK);
+        state.text = prependBlock(state.text, configVersionBlock(1));
         state.parsed.configVersion = 1;
         state.appendedKeys.push("configVersion");
       } else if (state.parsed.configVersion === 0) {
@@ -77,6 +89,25 @@ const MIGRATIONS: ConfigMigration[] = [
           unknown
         >;
         state.appendedKeys.push("logging");
+      }
+    },
+  },
+  {
+    fromVersion: 1,
+    toVersion: 2,
+    name: "add preprocess aspectPad defaults",
+    apply: (state) => {
+      state.text = replaceTopLevelConfigVersion(state.text, 2);
+      state.parsed.configVersion = 2;
+      if (!state.appendedKeys.includes("configVersion")) state.appendedKeys.push("configVersion");
+
+      if (!Object.hasOwn(state.parsed, "preprocess")) {
+        state.text = appendBlocks(state.text, [PREPROCESS_BLOCK]);
+        state.parsed.preprocess = structuredClone(defaultConfig.preprocess) as unknown as Record<
+          string,
+          unknown
+        >;
+        state.appendedKeys.push("preprocess");
       }
     },
   },
@@ -206,7 +237,12 @@ function prependBlock(text: string, block: string): string {
 
 function replaceTopLevelConfigVersion(text: string, version: number): string {
   const replaced = text.replace(/^(configVersion\s*:\s*)\d+\s*$/m, `$1${version}`);
-  return replaced === text ? prependBlock(text, CONFIG_VERSION_BLOCK) : replaced;
+  return replaced === text ? prependBlock(text, configVersionBlock(version)) : replaced;
+}
+
+function configVersionBlock(version: number): string {
+  return `# 配置文件版本。用于未来安全补全旧配置文件
+configVersion: ${version}`;
 }
 
 function appendBlocks(text: string, blocks: string[]): string {

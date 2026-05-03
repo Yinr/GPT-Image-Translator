@@ -7,6 +7,7 @@ import {
 } from "../openai/image-options.ts";
 
 const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
+const ASPECT_PAD_FILLS = ["transparent", "white"] as const;
 
 export function validateConfig(config: AppConfig): AppConfig {
   const errors: string[] = [];
@@ -34,6 +35,20 @@ export function validateConfig(config: AppConfig): AppConfig {
   }
   if (config.retry.backoffFactor < 1) errors.push("retry.backoffFactor must be at least 1");
   if (!config.storage.sqlitePath.trim()) errors.push("storage.sqlitePath is required");
+  if (!config.preprocess?.aspectPad) errors.push("preprocess.aspectPad is required");
+  if (config.preprocess?.aspectPad) {
+    if (!ASPECT_PAD_FILLS.includes(config.preprocess.aspectPad.fill as AspectPadFill)) {
+      errors.push("preprocess.aspectPad.fill is invalid");
+    }
+    if (!config.preprocess.aspectPad.intermediateDir.trim()) {
+      errors.push("preprocess.aspectPad.intermediateDir is required");
+    }
+    if (isUnsafeIntermediateDir(config.preprocess.aspectPad.intermediateDir)) {
+      errors.push(
+        "preprocess.aspectPad.intermediateDir must be a safe relative path inside outputDir",
+      );
+    }
+  }
   if (!config.logging.dir.trim()) errors.push("logging.dir is required");
   if (!LOG_LEVELS.includes(config.logging.level as (typeof LOG_LEVELS)[number])) {
     errors.push("logging.level is invalid");
@@ -64,6 +79,14 @@ export function validateConfig(config: AppConfig): AppConfig {
   }
 
   return config;
+}
+
+type AspectPadFill = (typeof ASPECT_PAD_FILLS)[number];
+
+function isUnsafeIntermediateDir(value: string): boolean {
+  const normalized = value.replace(/\\/g, "/").trim();
+  if (!normalized || normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized)) return true;
+  return normalized.split("/").some((part) => part === ".." || part === "");
 }
 
 function isValidImageSize(value: string): boolean {

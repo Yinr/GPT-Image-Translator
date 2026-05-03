@@ -51,6 +51,9 @@ function normalizeConfig(config: AppConfig): void {
     .toLowerCase() as AppConfig["openai"]["image"]["background"];
   config.openai.image.outputFormat = config.openai.image.outputFormat
     .toLowerCase() as AppConfig["openai"]["image"]["outputFormat"];
+  config.preprocess.aspectPad.fill = config.preprocess.aspectPad.fill
+    .toLowerCase() as AppConfig["preprocess"]["aspectPad"]["fill"];
+  config.preprocess.aspectPad.intermediateDir = config.preprocess.aspectPad.intermediateDir.trim();
   config.logging.level = config.logging.level.toLowerCase() as AppConfig["logging"]["level"];
   config.logging.dir = config.logging.dir.trim();
 }

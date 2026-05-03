@@ -4,6 +4,7 @@ import { AttemptStore } from "../storage/attempt-store.ts";
 import { openDatabase } from "../storage/db.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
+import { ProcessingMetadataStore } from "../storage/processing-metadata-store.ts";
 import { RunStore } from "../storage/run-store.ts";
 export async function runStatusCommand(sqlitePath: string, limit: number): Promise<RunSummary[]> {
   const service = await openQueryService(sqlitePath);
@@ -43,6 +44,7 @@ async function openQueryService(sqlitePath: string) {
       new JobStore(db),
       new AttemptStore(db),
       new OutputStore(db),
+      new ProcessingMetadataStore(db),
     ),
     close: () => db.close(),
   };

@@ -208,6 +208,8 @@ manual workflow document that does not include secrets or generated outputs.
 `gpt-image-2` canvas ratio without shrinking original pixels. This stage should run before the
 OpenAI client and produce a prepared image path plus the chosen API `size`.
 
+Status: designed in `docs/spec.md` under "Aspect-Ratio Preprocessing Design".
+
 Target behavior:
 
 - Read the original image dimensions.
@@ -220,11 +222,12 @@ Target behavior:
 
 **Acceptance criteria:**
 
-- Design documents where preprocessing sits in the queue/job-runner flow.
-- Config shape is specified but not necessarily implemented.
-- Storage implications are identified for original, preprocessed, uncropped API output, and final
-  output paths.
-- Image library choice is justified, preferably JSR/Deno-compatible.
+- [x] Design documents where preprocessing sits in the queue/job-runner flow.
+- [x] Config shape is specified but not necessarily implemented.
+- [x] Storage implications are identified for original, preprocessed, uncropped API output, and
+      final output paths.
+- [x] Image library selection criteria are defined, with final dependency choice deferred to
+      implementation after Windows/Deno compatibility checks.
 
 **Verification:**
 
@@ -243,6 +246,8 @@ Target behavior:
 
 **Description:** Add configuration for optional aspect-ratio preprocessing and optional crop-back
 behavior.
+
+Status: implemented.
 
 Proposed YAML shape:
 
@@ -265,13 +270,15 @@ Config behavior:
 
 **Acceptance criteria:**
 
-- Defaults preserve current behavior.
-- Config validation rejects unknown fill modes and unsafe intermediate paths.
-- `config.example.yaml` documents the feature in Chinese.
+- [x] Defaults preserve current behavior.
+- [x] Config validation rejects unknown fill modes and unsafe intermediate paths.
+- [x] `config.example.yaml` documents the feature in Chinese.
+- [x] Config upgrade bumps to `configVersion: 2` and appends `preprocess.aspectPad` for old configs.
 
 **Verification:**
 
 - `deno test tests/config_test.ts`
+- `deno test tests/config_upgrade_test.ts tests/openai_client_test.ts`
 - `deno task check`
 
 **Files likely touched:**
@@ -290,6 +297,8 @@ Config behavior:
 **Description:** Implement pure functions that choose the best supported API canvas size and compute
 padding/crop rectangles from source dimensions.
 
+Status: implemented.
+
 Rules:
 
 - Do not shrink the original image pixels.
@@ -299,10 +308,10 @@ Rules:
 
 **Acceptance criteria:**
 
-- Square, portrait, landscape, and extreme aspect-ratio inputs choose deterministic sizes.
-- Computed canvas dimensions always contain the original dimensions.
-- Crop rectangle corresponds to the original image position within the padded canvas.
-- No filesystem or image library dependency is required for the planner tests.
+- [x] Square, portrait, landscape, and extreme aspect-ratio inputs choose deterministic sizes.
+- [x] Computed canvas dimensions always contain the original dimensions.
+- [x] Crop rectangle corresponds to the original image position within the padded canvas.
+- [x] No filesystem or image library dependency is required for the planner tests.
 
 **Verification:**
 
@@ -321,6 +330,8 @@ Rules:
 **Description:** Add an image processing adapter that can create padded input images and optionally
 crop API outputs back to the original rectangle.
 
+Status: implemented with `jsr:@matmen/imagescript@1.3.1`.
+
 Processing flow:
 
 - Read original dimensions.
@@ -332,17 +343,18 @@ Processing flow:
 
 **Acceptance criteria:**
 
-- Original pixels are not downscaled during preprocessing.
-- Padded image dimensions match the planner output.
-- Fill mode supports transparent and white padding.
-- Crop-back produces only a crop, not a resize.
-- Uncropped API output is retained under the configured intermediate directory when crop-back is
-  enabled.
-- Temporary files are cleaned up when safe, while durable intermediate outputs are preserved.
+- [x] Original pixels are not downscaled during preprocessing.
+- [x] Padded image dimensions match the planner output.
+- [x] Fill mode supports transparent and white padding.
+- [x] Crop-back produces only a crop, not a resize.
+- [ ] Uncropped API output is retained under the configured intermediate directory when crop-back is
+      enabled. This is deferred to F5 because it requires queue/job-runner output wiring.
+- [x] Temporary files are cleaned up when safe, while durable intermediate outputs are preserved.
 
 **Verification:**
 
 - Unit tests using generated small images.
+- `deno test tests/image_preprocessor_test.ts`
 - `deno task check`
 - `deno task test`
 
@@ -362,14 +374,17 @@ Processing flow:
 **Description:** Wire aspect-ratio preprocessing into job execution while preserving current
 behavior when disabled.
 
+Status: implemented.
+
 **Acceptance criteria:**
 
-- Disabled preprocessing leaves existing request and output behavior unchanged.
-- Enabled preprocessing sends the padded image path to the OpenAI client.
-- Enabled preprocessing sets request `size` to the planner-selected API size.
-- Crop-back mode writes the final cropped output to the normal output path.
-- Crop-back mode also preserves the uncropped API output in the intermediate directory.
-- Attempts and output metadata clearly identify final output and any preserved intermediate output.
+- [x] Disabled preprocessing leaves existing request and output behavior unchanged.
+- [x] Enabled preprocessing sends the padded image path to the OpenAI client.
+- [x] Enabled preprocessing sets request `size` to the planner-selected API size.
+- [x] Crop-back mode writes the final cropped output to the normal output path.
+- [x] Crop-back mode also preserves the uncropped API output in the intermediate directory.
+- [ ] Attempts and output metadata clearly identify final output and any preserved intermediate
+      output. This is deferred to F6 because it requires query/storage visibility changes.
 
 **Verification:**
 
@@ -393,16 +408,19 @@ behavior when disabled.
 **Description:** Add CLI/query visibility for preprocessing decisions so users can diagnose why a
 given output used a particular canvas size or crop behavior.
 
+Status: implemented.
+
 **Acceptance criteria:**
 
-- Job inspection shows whether preprocessing was enabled.
-- Job inspection shows selected API size and crop-back status when available.
-- Failed preprocessing errors are clear and non-retryable unless caused by transient filesystem
-  issues.
+- [x] Job inspection shows whether preprocessing was enabled.
+- [x] Job inspection shows selected API size and crop-back status when available.
+- [x] Failed preprocessing errors are clear and non-retryable unless caused by transient filesystem
+      issues.
 
 **Verification:**
 
 - `deno test tests/query_commands_test.ts tests/run_query_service_test.ts`
+- `deno test tests/storage_test.ts tests/job_runner_test.ts`
 - Manual CLI inspection of a preprocessed run.
 
 **Files likely touched:**

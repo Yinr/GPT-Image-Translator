@@ -16,7 +16,7 @@ export class OpenAIImageClient {
     const form = new FormData();
     form.set("model", this.config.model);
     form.set("prompt", request.prompt);
-    setFormFieldIfNotAuto(form, "size", this.config.image.size);
+    setFormFieldIfNotAuto(form, "size", request.size ?? this.config.image.size);
     setFormFieldIfNotAuto(form, "quality", this.config.image.quality);
     setFormFieldIfNotAuto(form, "background", this.config.image.background);
     form.set("output_format", this.config.image.outputFormat);

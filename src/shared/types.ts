@@ -9,6 +9,7 @@ export interface AppConfig {
   queue: QueueConfig;
   retry: RetryConfig;
   storage: StorageConfig;
+  preprocess: PreprocessConfig;
   logging: LoggingConfig;
 }
 
@@ -65,6 +66,19 @@ export interface StorageConfig {
   sqlitePath: string;
 }
 
+export interface PreprocessConfig {
+  aspectPad: AspectPadConfig;
+}
+
+export interface AspectPadConfig {
+  enabled: boolean;
+  fill: AspectPadFill;
+  cropBackToOriginal: boolean;
+  intermediateDir: string;
+}
+
+export type AspectPadFill = "transparent" | "white";
+
 export interface LoggingConfig {
   enabled: boolean;
   level: LogLevel;
@@ -98,6 +112,7 @@ export interface ImageEditResult {
 export interface ImageEditRequest {
   imagePath: string;
   prompt: string;
+  size?: OpenAIImageSize;
 }
 
 export interface ApiErrorInfo {
@@ -194,5 +209,24 @@ export interface OutputRecord {
   byteCount?: number;
   revisedPrompt?: string;
   usageJson?: string;
+  createdAt: string;
+}
+
+export interface ProcessingMetadataRecord {
+  id: string;
+  jobId: string;
+  enabled: boolean;
+  apiSize?: OpenAIImageSize;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  canvasWidth?: number;
+  canvasHeight?: number;
+  sourceRectX?: number;
+  sourceRectY?: number;
+  sourceRectWidth?: number;
+  sourceRectHeight?: number;
+  fill?: AspectPadFill;
+  cropBackToOriginal: boolean;
+  uncroppedOutputPath?: string;
   createdAt: string;
 }

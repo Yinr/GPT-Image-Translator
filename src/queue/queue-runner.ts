@@ -1,8 +1,9 @@
-import type { JobRecord, RetryConfig } from "../shared/types.ts";
+import type { AspectPadConfig, JobRecord, RetryConfig } from "../shared/types.ts";
 import { sleep } from "../shared/time.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
+import { ProcessingMetadataStore } from "../storage/processing-metadata-store.ts";
 import { RunStore } from "../storage/run-store.ts";
 import { type ImageEditClientLike, runJob } from "./job-runner.ts";
 
@@ -13,12 +14,15 @@ export interface QueueRunnerOptions {
   minDelayMs: number;
   failFast: boolean;
   formatFromApi: boolean;
+  outputDir?: string;
+  aspectPad?: AspectPadConfig;
   retry: RetryConfig;
   client: ImageEditClientLike;
   runStore: RunStore;
   jobStore: JobStore;
   attemptStore: AttemptStore;
   outputStore: OutputStore;
+  processingMetadataStore?: ProcessingMetadataStore;
   onJobStart?: (event: { job: JobRecord; attemptNo: number }) => void | Promise<void>;
   onJobFinish?: (event: {
     job: JobRecord;
@@ -96,11 +100,14 @@ async function runOneJob(
     job,
     prompt: options.prompt,
     formatFromApi: options.formatFromApi,
+    outputDir: options.outputDir,
+    aspectPad: options.aspectPad,
     retry: options.retry,
     client: options.client,
     jobStore: options.jobStore,
     attemptStore: options.attemptStore,
     outputStore: options.outputStore,
+    processingMetadataStore: options.processingMetadataStore,
     now: options.now,
   });
 

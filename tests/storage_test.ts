@@ -4,6 +4,7 @@ import { RunStore } from "../src/storage/run-store.ts";
 import { JobStore } from "../src/storage/job-store.ts";
 import { AttemptStore } from "../src/storage/attempt-store.ts";
 import { OutputStore } from "../src/storage/output-store.ts";
+import { ProcessingMetadataStore } from "../src/storage/processing-metadata-store.ts";
 
 Deno.test("stores create runs, jobs, and attempts", () => {
   const db = openMemoryDatabase();
@@ -183,6 +184,63 @@ Deno.test("JobStore listFailedByRun returns failed jobs only", () => {
     assertEquals(failed.length, 1);
     assertEquals(failed[0].id, "job-1");
     assertEquals(failed[0].lastErrorType, "authentication_error");
+  } finally {
+    db.close();
+  }
+});
+
+Deno.test("ProcessingMetadataStore creates and reads preprocessing metadata", () => {
+  const db = openMemoryDatabase();
+  try {
+    const runs = new RunStore(db);
+    const jobs = new JobStore(db);
+    const processing = new ProcessingMetadataStore(db);
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runs.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    jobs.upsert({ id: "job-1", runId: "run-1", inputPath: "a", outputPath: "a", now });
+
+    processing.create({
+      id: "processing-1",
+      jobId: "job-1",
+      enabled: true,
+      apiSize: "1024x1536",
+      sourceWidth: 800,
+      sourceHeight: 1000,
+      canvasWidth: 800,
+      canvasHeight: 1200,
+      sourceRectX: 0,
+      sourceRectY: 100,
+      sourceRectWidth: 800,
+      sourceRectHeight: 1000,
+      fill: "white",
+      cropBackToOriginal: true,
+      uncroppedOutputPath: "/output/.intermediate/a.png",
+      createdAt: now,
+    });
+
+    const metadata = processing.getByJob("job-1");
+
+    assertExists(metadata);
+    assertEquals(metadata.enabled, true);
+    assertEquals(metadata.apiSize, "1024x1536");
+    assertEquals(metadata.sourceWidth, 800);
+    assertEquals(metadata.canvasHeight, 1200);
+    assertEquals(metadata.sourceRectY, 100);
+    assertEquals(metadata.fill, "white");
+    assertEquals(metadata.cropBackToOriginal, true);
+    assertEquals(metadata.uncroppedOutputPath, "/output/.intermediate/a.png");
   } finally {
     db.close();
   }
