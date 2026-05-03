@@ -144,7 +144,12 @@ function formatLogLine(
 }
 
 function localDateParts(date: Date): {
-  y: string; M: string; d: string; h: string; m: string; s: string;
+  y: string;
+  M: string;
+  d: string;
+  h: string;
+  m: string;
+  s: string;
 } {
   return {
     y: String(date.getFullYear()),

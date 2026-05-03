@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import { join } from "@std/path";
+import { Image } from "@matmen/imagescript";
 import { execute } from "../src/cli/run.ts";
 import { defaultConfig } from "../src/config/defaults.ts";
 import { createConfigHash } from "../src/core/run-id.ts";
@@ -60,18 +61,69 @@ Deno.test("execute logs planning and job progress", async () => {
 
   assertEquals(result.succeeded, 1);
   assertEquals(logs.some((message) => message === `Scanning images in ${inputDir}`), true);
-  assertEquals(logs.some((message) => message.startsWith("Starting run ")), true);
-  assertEquals(logs.some((message) => message.includes("Planned jobs: total=1")), true);
   assertEquals(
     logs.some((message) =>
-      message.includes(`Starting [1/1] attempt 1 for ${join(inputDir, "a.jpg")}`)
+      message.includes("starting new run; no matching running run for current loaded config")
     ),
     true,
   );
+  assertEquals(logs.some((message) => message.includes("Planned jobs: total=1")), true);
   assertEquals(
-    logs.some((message) => message.includes(`Completed [1/1] ${join(inputDir, "a.jpg")}`)),
+    logs.some((message) => message.includes(`Attempt 1: ${join(inputDir, "a.jpg")}`)),
     true,
   );
+  assertEquals(
+    logs.some((message) =>
+      message.includes(
+        `Completed [work=1/1, left=0] ${join(inputDir, "a.jpg")}`,
+      )
+    ),
+    true,
+  );
+});
+
+Deno.test("execute keeps run resumable when graceful stop is requested", async () => {
+  const inputDir = await Deno.makeTempDir();
+  const outputDir = await Deno.makeTempDir();
+  const stateDir = await Deno.makeTempDir();
+  await Deno.writeFile(join(inputDir, "a.jpg"), new Uint8Array([1]));
+  await Deno.writeFile(join(inputDir, "b.jpg"), new Uint8Array([1]));
+
+  let stopRequested = false;
+  const client: ImageEditClientLike = {
+    editImage: () => {
+      stopRequested = true;
+      return Promise.resolve({ bytes: new Uint8Array([1]), outputFormat: "png" });
+    },
+  };
+  const config = {
+    ...structuredClone(defaultConfig),
+    inputDir,
+    outputDir,
+    prompt: "translate",
+    queue: { ...defaultConfig.queue, concurrency: 1 },
+    storage: { sqlitePath: join(stateDir, "translator.db") },
+  };
+
+  const result = await execute({
+    dryRun: false,
+    client,
+    config,
+    stopRequested: () => stopRequested,
+  });
+
+  assertEquals(result.succeeded, 1);
+  assertEquals(result.pending, 1);
+  assertEquals(result.stopped, true);
+  assertEquals(result.stopReason, "interrupted");
+
+  const db = await openDatabase(config.storage.sqlitePath);
+  try {
+    const runs = new RunStore(db);
+    assertEquals(runs.get(result.runId!)?.status, "running");
+  } finally {
+    db.close();
+  }
 });
 
 Deno.test("execute writes diagnostic log file when logging is enabled", async () => {
@@ -109,6 +161,69 @@ Deno.test("execute writes diagnostic log file when logging is enabled", async ()
   assertEquals(text.includes("[INFO] Run started"), true);
   assertEquals(text.includes("[INFO] Job completed"), true);
   assertEquals(text.includes("[INFO] Run finished"), true);
+});
+
+Deno.test("execute logs preprocessing progress and diagnostics when aspect padding is enabled", async () => {
+  const inputDir = await Deno.makeTempDir();
+  const outputDir = await Deno.makeTempDir();
+  const stateDir = await Deno.makeTempDir();
+  const logDir = await Deno.makeTempDir();
+  const inputPath = join(inputDir, "a.png");
+  await writeSolidImage(inputPath, 800, 1000, 0x43a047ff);
+
+  const logs: string[] = [];
+  const client: ImageEditClientLike = {
+    editImage: () => Promise.resolve({ bytes: new Uint8Array([1]), outputFormat: "png" }),
+  };
+  const result = await execute({
+    dryRun: false,
+    log: (message) => logs.push(message),
+    client,
+    config: {
+      ...structuredClone(defaultConfig),
+      inputDir,
+      outputDir,
+      prompt: "translate",
+      storage: { sqlitePath: join(stateDir, "translator.db") },
+      preprocess: {
+        aspectPad: {
+          enabled: true,
+          fill: "transparent",
+          cropBackToOriginal: false,
+          intermediateDir: ".intermediate",
+        },
+      },
+      logging: {
+        ...defaultConfig.logging,
+        enabled: true,
+        dir: logDir,
+        level: "debug",
+        file: true,
+        console: false,
+      },
+    },
+  });
+
+  const text = await Deno.readTextFile(result.logFile!);
+
+  assertEquals(
+    logs.some((message) =>
+      message === "Preprocess aspectPad enabled fill=transparent cropBack=false"
+    ),
+    true,
+  );
+  assertEquals(
+    logs.some((message) =>
+      message.includes(`Prepared ${inputPath} -> 1024x1536 padded=800x1200 cropBack=no`)
+    ),
+    true,
+  );
+  assertEquals(text.includes("[INFO] Preprocessing enabled"), true);
+  assertEquals(text.includes("[INFO] Image preprocessed"), true);
+  assertEquals(text.includes('"apiSize":"1024x1536"'), true);
+  assertEquals(text.includes('"canvasHeight":1200'), true);
+  assertEquals(text.includes("[DEBUG] Image preprocessing details"), true);
+  assertEquals(text.includes('"sourceRectY":100'), true);
 });
 
 Deno.test("execute reuses resumable run when resume is enabled", async () => {
@@ -207,11 +322,13 @@ Deno.test("execute resets stale running jobs when resuming", async () => {
   const outputPath = join(outputDir, "a.png");
   await Deno.writeFile(outputPath, new Uint8Array([1]));
 
-  const result = await execute({ dryRun: false, config });
+  const logs: string[] = [];
+  const result = await execute({ dryRun: false, config, log: (message) => logs.push(message) });
 
   assertEquals(result.runId, "existing-run");
   assertEquals(result.resumed, true);
   assertEquals(result.skipped, 1);
+  assertEquals(logs.some((message) => message === "Resume reset stale running jobs: 1"), true);
 
   const verifyDb = await openDatabase(config.storage.sqlitePath);
   try {
@@ -319,3 +436,14 @@ Deno.test("execute uses configured output format for skipExisting checks", async
   assertEquals(result.skipped, 1);
   assertEquals(result.pending, 0);
 });
+
+async function writeSolidImage(
+  path: string,
+  width: number,
+  height: number,
+  color: number,
+): Promise<void> {
+  const image = new Image(width, height);
+  image.fill(color);
+  await Deno.writeFile(path, await image.encode());
+}

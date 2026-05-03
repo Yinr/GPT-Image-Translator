@@ -83,6 +83,7 @@
       "jsr:@std/assert@1",
       "jsr:@std/cli@*",
       "jsr:@std/encoding@*",
+      "jsr:@std/fmt@1",
       "jsr:@std/fs@*",
       "jsr:@std/path@1",
       "jsr:@std/yaml@1"

@@ -92,5 +92,8 @@ Deno.test("logger supports console sink", async () => {
 });
 
 Deno.test("logFilePath sanitizes run id", () => {
-  assertEquals(logFilePath("./logs", "run:1/2", () => new Date(2026, 4, 2, 8, 30, 45)), "logs\\20260502_083045_run_1_2.log");
+  assertEquals(
+    logFilePath("./logs", "run:1/2", () => new Date(2026, 4, 2, 8, 30, 45)),
+    "logs\\20260502_083045_run_1_2.log",
+  );
 });

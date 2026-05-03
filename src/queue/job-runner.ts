@@ -32,6 +32,11 @@ export interface RunJobOptions {
   processingMetadataStore?: ProcessingMetadataStore;
   aspectPad?: AspectPadConfig;
   outputDir?: string;
+  onPreprocessPrepared?: (event: {
+    job: JobRecord;
+    metadata: ProcessingAttemptMetadata;
+    preparedImagePath: string;
+  }) => void | Promise<void>;
   now?: () => string;
 }
 
@@ -83,6 +88,13 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
 
   try {
     const prepared = await prepareAttempt(options);
+    if (prepared.metadata) {
+      await options.onPreprocessPrepared?.({
+        job: options.job,
+        metadata: prepared.metadata,
+        preparedImagePath: prepared.imagePath,
+      });
+    }
     let result: ImageEditResult;
     try {
       result = await options.client.editImage({

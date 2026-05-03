@@ -418,9 +418,16 @@ Special handling:
 The current implementation assumes one provider and one active API key source per run. A later major
 version may expand this into a dedicated account-scheduling layer.
 
+The current run-level cooldown for retryable failures is a pragmatic fit for the single active
+API-key model. It should be treated as a safety default, not as the final scheduling abstraction.
+
 Expected future direction:
 
 - Support multiple API keys for one provider without breaking the current single-key path.
+- Add API-key-level cooldown and health state so a quota/rate-limit failure on one key does not
+  block other healthy keys.
+- Add provider-level cooldown and health state so provider-wide failures can pause all keys under
+  that provider without confusing them with per-key quota exhaustion.
 - Add explicit key-selection strategies, including primary-with-failover and balanced usage.
 - Allow queue concurrency to scale with the number of healthy available keys rather than treating
   all requests as if they share one identical credential.
@@ -428,6 +435,8 @@ Expected future direction:
   behavior without exposing raw secrets.
 - Eventually generalize from a single-provider key pool to a multi-provider account pool with health
   tracking and policy-driven routing.
+- Allow provider-level proxy configuration so operators can route specific providers through
+  different network proxies when required by local network conditions.
 
 Design constraints for that future work:
 
@@ -436,8 +445,12 @@ Design constraints for that future work:
 - Secrets must never be written to logs, CLI output, or persisted diagnostic records.
 - Provider-specific request differences should remain below the queue orchestration layer whenever
   possible.
+- Proxy settings should belong to provider/client construction rather than job planning, and proxy
+  details must not be written to diagnostic logs if they include credentials.
 - The first implementation step should remain intentionally small: one provider, multiple keys,
   deterministic rotation.
+- Configuration format changes should be batched carefully and avoided for small runtime-only fixes;
+  each new user-facing config field carries upgrade and documentation cost.
 
 ## Open Questions
 
@@ -446,6 +459,8 @@ Design constraints for that future work:
   separate non-secret logical account id?
 - For future multi-provider support, should provider failover be automatic, policy-driven, or always
   explicitly configured?
+- For future provider proxy support, should proxy configuration be global, provider-specific, or
+  both?
 - For future key balancing, should scheduling remain simple round-robin at first, or account for
   cooldowns, quotas, and recent rate limits from the beginning?
 - If diagnostic logging is enabled during dry runs, should it write files or only use

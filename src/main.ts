@@ -3,6 +3,12 @@ import { isConfigOutdated, upgradeConfigFile } from "./config/upgrade.ts";
 import { CURRENT_CONFIG_VERSION } from "./config/defaults.ts";
 import { HELP_TEXT, parseCliArgs } from "./cli/args.ts";
 import { execute, type ExecuteResult } from "./cli/run.ts";
+import {
+  formatFailedJobs,
+  formatInterruptMessage,
+  formatSummary,
+  formatTranslateLog,
+} from "./cli/terminal-format.ts";
 import { runFailedCommand, runInspectCommand, runStatusCommand } from "./cli/query-commands.ts";
 import type { JobDetail, RunDetail } from "./services/run-query.ts";
 import type { RunRecord } from "./shared/types.ts";
@@ -84,13 +90,14 @@ export async function main(args: string[]): Promise<void> {
   }
 
   console.log(`Loaded config: ${configPath}`);
+  const interrupt = cli.dryRun ? undefined : createInterruptController();
   const result = await execute({
     config,
     dryRun: cli.dryRun,
-    log: (message) => console.log(message),
-  });
+    log: (message) => console.log(formatTranslateLog(message)),
+    stopRequested: interrupt?.stopRequested,
+  }).finally(() => interrupt?.dispose());
   printSummary(result, cli.dryRun);
-  console.log(JSON.stringify(result, null, 2));
 }
 
 function printHelp(): void {
@@ -98,34 +105,35 @@ function printHelp(): void {
 }
 
 function printSummary(result: ExecuteResult, dryRun: boolean): void {
-  if (dryRun) {
-    console.log(`Dry run: ${result.totalImages} image(s), ${result.plannedJobs} planned job(s).`);
-    return;
-  }
+  console.log(formatSummary(result, dryRun));
+  for (const line of formatFailedJobs(result)) console.log(line);
+}
 
-  console.log(
-    [
-      `Run: ${result.runId ?? "n/a"}`,
-      `resumed=${result.resumed ? "yes" : "no"}`,
-      `processed=${result.processed ?? 0}`,
-      `succeeded=${result.succeeded ?? 0}`,
-      `retryable=${result.retryable ?? 0}`,
-      `failed=${result.failed ?? 0}`,
-      `skipped=${result.skipped ?? 0}`,
-      `pending=${result.pending ?? 0}`,
-      `stopped=${result.stopped ? "yes" : "no"}`,
-    ].join(" | "),
-  );
+interface InterruptController {
+  stopRequested: () => boolean;
+  dispose: () => void;
+}
 
-  if (result.failedJobs && result.failedJobs.length > 0) {
-    console.log("Failed jobs:");
-    for (const failedJob of result.failedJobs) {
-      console.log(
-        `- ${failedJob.inputPath} -> ${failedJob.outputPath} [${
-          failedJob.errorType ?? "unknown"
-        }] ${failedJob.errorMessage ?? ""}`
-          .trim(),
-      );
+function createInterruptController(): InterruptController | undefined {
+  let requested = false;
+  let forced = false;
+  const handler = () => {
+    if (!requested) {
+      requested = true;
+      console.warn(formatInterruptMessage("graceful"));
+      return;
     }
-  }
+
+    if (!forced) {
+      forced = true;
+      console.error(formatInterruptMessage("force"));
+      Deno.exit(130);
+    }
+  };
+
+  Deno.addSignalListener("SIGINT", handler);
+  return {
+    stopRequested: () => requested,
+    dispose: () => Deno.removeSignalListener("SIGINT", handler),
+  };
 }

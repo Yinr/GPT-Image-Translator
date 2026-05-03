@@ -139,6 +139,7 @@ Deno.test("runJob sends padded image and selected size when aspectPad is enabled
     await writeSolidImage(inputPath, 800, 1000, 0x43a047ff);
     let requestPath = "";
     let requestSize = "";
+    const preparedEvents: Array<{ apiSize: string; preparedImagePath: string }> = [];
     const client: ImageEditClientLike = {
       editImage: async (request) => {
         requestPath = request.imagePath;
@@ -170,11 +171,17 @@ Deno.test("runJob sends padded image and selected size when aspectPad is enabled
       attemptStore: context.attempts,
       outputStore: context.outputs,
       processingMetadataStore: context.processingMetadata,
+      onPreprocessPrepared: ({ metadata, preparedImagePath }) => {
+        preparedEvents.push({ apiSize: metadata.apiSize, preparedImagePath });
+      },
       now: fixedClock(),
     });
 
     assertEquals(requestSize, "1024x1536");
     assertEquals(requestPath.endsWith(".preprocess.png"), true);
+    assertEquals(preparedEvents.length, 1);
+    assertEquals(preparedEvents[0].apiSize, "1024x1536");
+    assertEquals(preparedEvents[0].preparedImagePath, requestPath);
     await assertNotFound(requestPath);
     assertEquals([...await Deno.readFile(outputPath)], [5]);
   } finally {

@@ -123,6 +123,94 @@ Verification:
 
 ## Next Architecture Maintenance
 
+### Active Branch: Retry, Progress, and Resume UX
+
+Branch: `fix/retry-progress-resume-ux`
+
+Feature specs:
+
+- `docs/specs/retry-progress-resume-ux/requirements.md`
+- `docs/specs/retry-progress-resume-ux/design.md`
+- `docs/specs/retry-progress-resume-ux/tasks.md`
+
+Problem summary:
+
+- Real logs under `logs/` show quota/rate-like retryable errors such as `账号池额度已耗尽`, but the
+  current single-key runner immediately starts the next pending job after scheduling one job for
+  retry.
+- Live progress currently uses start/finish counters against an initial runnable count, which
+  becomes misleading when jobs move back to `retryable`.
+- Terminal output over-emphasizes long absolute paths and normal translate execution prints raw JSON
+  after the summary.
+- Auto-resume behavior is based on the full loaded config hash and a `running` run, but
+  changed-input behavior is not clearly documented.
+- User interruption currently risks exiting immediately while a long image request is in progress;
+  the first interrupt should instead stop after the current attempt.
+
+Planned implementation slices:
+
+- [x] Add graceful interruption: first interrupt drains current in-flight jobs and prevents new
+      jobs; second interrupt can force exit.
+- [x] Reproduce retry storm behavior in tests using fake clients and fake sleep/clock.
+- [x] Add run-level cooldown after retryable failures for the current single API-key model.
+- [x] Surface cooldown events in CLI output and diagnostic logs without exposing secrets.
+- [x] Replace live progress with durable status counts: work, left, retry, and failed.
+- [x] Add CLI-only terminal formatting using Deno standard color utilities and shorten/dim paths.
+      Translate formatting now lives in `src/cli/terminal-format.ts`; path shortening/dimming is
+      implemented for translate output.
+- [x] Replace normal translate raw JSON dump with a formatted summary.
+- [x] Document current resume matching and changed-input behavior.
+- [ ] Evaluate minimal explicit `translate --run <runId>` resume targeting; defer if it requires
+      wider storage/config redesign.
+- [x] Run final verification for this branch slice.
+- [x] Add concise terminal and diagnostic output for aspect-ratio preprocessing.
+
+Current branch constraints:
+
+- The run-level cooldown is a pragmatic single-key safety fix, not the intended final scheduler for
+  multi-key or multi-provider operation.
+- Avoid changing the YAML config format unless strictly necessary; config upgrades are costly for
+  existing local configs.
+- Graceful interruption should be a safer default behavior and should not require a new config
+  field.
+- If the temporary feature spec files are later removed from the branch before merge, the durable
+  outcomes and deferred tasks must remain in `docs/spec.md` and `docs/tasks.md`.
+
+Resume notes for this branch:
+
+- Current auto-resume means: same fully loaded config hash plus latest `running` run.
+- Config file path itself is not hashed, but effective values are hashed after defaults/YAML/CLI
+  merge.
+- On resume, stale `running` jobs become `retryable` with `interrupted` metadata.
+- Current scan results are merged into the existing run; new files can be added, missing files are
+  not automatically cancelled, and existing outputs may convert unfinished jobs to `skipped` when
+  `output.skipExisting` applies.
+- Future task-identity matching should not include provider or API-key changes, so rotating keys or
+  switching equivalent provider credentials does not block resuming the same logical translation
+  task.
+- Strict changed-input reconciliation and resume-by-run-id without re-providing config are likely
+  follow-up work unless a small safe implementation emerges.
+
+Verification target:
+
+- [x] `deno test tests/queue_runner_test.ts tests/cli_run_test.ts tests/cli_args_test.ts`
+- [x] `deno task check`
+- [x] `deno task test` (`102 passed | 0 failed`)
+- [x] `deno fmt --check deno.json config.example.yaml docs src tests`
+
+Deferred follow-up tasks that must survive this branch:
+
+- [ ] Design API-key-level cooldown, quota health, and retry routing once multiple API keys are
+      supported.
+- [ ] Design provider-level cooldown/health tracking once multiple providers are supported.
+- [ ] Design provider-level proxy configuration and redaction rules.
+- [ ] Decide whether future multi-key attempt metadata stores a masked key label, a non-secret
+      logical account id, or both.
+- [ ] Design explicit resume-by-run-id without requiring the exact same full config hash.
+- [ ] Design a command/task fingerprint that excludes provider and API credential changes from
+      resume identity while still validating compatible runtime execution settings.
+- [ ] Design input manifest and changed-input reconciliation modes for strict resume behavior.
+
 ### Task A1: Normalize Shared Constants and Status Metadata
 
 **Description:** Review repeated status strings, config option lists, and CLI/query display
@@ -199,6 +287,81 @@ manual workflow document that does not include secrets or generated outputs.
 - `.gitignore` for temporary outputs
 
 **Estimated scope:** Small
+
+### Task A4: Add Success-Limit Stop Control
+
+**Description:** Add an optional execution limit that stops a translate run after a configured
+number of newly successful image jobs, even if more pending/retryable jobs remain. This is useful
+for small validation batches and controlled emergency runs.
+
+Status: planned, not part of `fix/retry-progress-resume-ux`.
+
+Target behavior:
+
+- Allow a user to request "stop after N newly succeeded images" for a translate invocation.
+- Count only jobs that succeed during the current invocation, not previously skipped or already
+  succeeded jobs from earlier runs.
+- Stop scheduling new jobs once the success limit is reached.
+- Let already running jobs finish if the limit is reached while concurrent jobs are in flight.
+- Keep the run resumable when pending/retryable jobs remain.
+
+Open design questions:
+
+- Should the limit be a CLI-only option such as `--max-success <n>`, a YAML field, or both?
+- Should it count `skipped` outputs as completed for dry validation workflows, or strictly count
+  only fresh `succeeded` jobs?
+- How should this interact with future multi-key concurrency and graceful interruption summaries?
+
+Acceptance criteria:
+
+- [ ] Success limit can stop a run without marking remaining work as failed.
+- [ ] Summary clearly says the run stopped because the success limit was reached.
+- [ ] Existing resume behavior can continue remaining jobs later.
+- [ ] Tests cover sequential and concurrent cases.
+
+Verification:
+
+- `deno test tests/queue_runner_test.ts tests/cli_run_test.ts tests/cli_args_test.ts`
+- `deno task check`
+
+**Estimated scope:** Medium
+
+### Task A5: Add Provider Proxy Configuration
+
+**Description:** Add optional proxy configuration for provider/API clients so users can route
+requests through a proxy when required by their network environment. This should be designed with
+future multi-provider support in mind.
+
+Status: planned, not part of `fix/retry-progress-resume-ux`.
+
+Target behavior:
+
+- Support configuring a proxy for the current OpenAI-compatible provider/client.
+- Leave room for provider-specific proxy settings when multiple providers are supported.
+- Avoid logging proxy credentials or full proxy URLs if they contain secrets.
+- Keep proxy handling below the queue layer; job planning and scheduling should not know transport
+  proxy details.
+
+Open design questions:
+
+- Should the first version support only environment variables such as `HTTP_PROXY` / `HTTPS_PROXY`,
+  explicit YAML fields, or both?
+- Should proxy config be global, provider-specific, or resolved by provider with a global fallback?
+- Which Deno HTTP client/proxy mechanism is appropriate and stable on Windows?
+
+Acceptance criteria:
+
+- [ ] Requests can be sent through a configured proxy.
+- [ ] Proxy config is validated and documented.
+- [ ] Secrets in proxy URLs are redacted from logs and errors.
+- [ ] Tests cover proxy option construction without requiring a real proxy service.
+
+Verification:
+
+- `deno test tests/openai_client_test.ts tests/config_test.ts`
+- `deno task check`
+
+**Estimated scope:** Medium
 
 ## Future Feature Roadmap
 

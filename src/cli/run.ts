@@ -6,7 +6,7 @@ import { planJobs } from "../queue/job-planner.ts";
 import { runQueue } from "../queue/queue-runner.ts";
 import { createLogger } from "../logging/logger.ts";
 import { nowIso } from "../shared/time.ts";
-import type { AppConfig } from "../shared/types.ts";
+import type { AppConfig, JobStatus } from "../shared/types.ts";
 import { openDatabase } from "../storage/db.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
@@ -20,6 +20,7 @@ export interface ExecuteOptions {
   dryRun: boolean;
   log?: (message: string) => void;
   client?: ImageEditClientLike;
+  stopRequested?: () => boolean;
 }
 
 export interface ExecuteResult {
@@ -35,6 +36,7 @@ export interface ExecuteResult {
   skipped?: number;
   pending?: number;
   stopped?: boolean;
+  stopReason?: "error" | "interrupted";
   failedJobs?: Array<{
     inputPath: string;
     outputPath: string;
@@ -68,10 +70,15 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const runId = resumable?.id ?? createRunId();
     const resumed = Boolean(resumable);
     const logger = createLogger({ config: options.config.logging, runId });
+    const runMode = resumed
+      ? "resuming matching running run"
+      : options.config.queue.resume
+      ? "starting new run; no matching running run for current loaded config"
+      : "starting new run; resume disabled";
     log(
-      resumed
-        ? `Resuming run ${runId}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`
-        : `Starting run ${runId}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`,
+      `${
+        resumed ? "Resuming" : "Starting"
+      } run ${runId}. ${runMode}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`,
     );
     await logger.info(resumed ? "Run resumed" : "Run started", {
       runId,
@@ -81,6 +88,18 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       minDelayMs: options.config.queue.minDelayMs,
       formatFromApi: options.config.output.formatFromApi,
     });
+    if (options.config.preprocess.aspectPad.enabled) {
+      log(
+        `Preprocess aspectPad enabled fill=${options.config.preprocess.aspectPad.fill} cropBack=${options.config.preprocess.aspectPad.cropBackToOriginal}`,
+      );
+      await logger.info("Preprocessing enabled", {
+        runId,
+        aspectPad: true,
+        fill: options.config.preprocess.aspectPad.fill,
+        cropBackToOriginal: options.config.preprocess.aspectPad.cropBackToOriginal,
+        intermediateDir: options.config.preprocess.aspectPad.intermediateDir,
+      });
+    }
 
     if (!resumable) {
       runStore.create({
@@ -96,7 +115,9 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         skippedJobs: 0,
       });
     } else {
-      jobStore.resetRunningJobs(runId, startedAt);
+      const resetJobs = jobStore.resetRunningJobs(runId, startedAt);
+      log(`Resume reset stale running jobs: ${resetJobs}`);
+      await logger.warn("Stale running jobs reset", { runId, resetJobs });
     }
 
     planJobs(jobStore, {
@@ -147,12 +168,10 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         skipped: countsBeforeRun.skipped,
         pending: countsBeforeRun.pending,
         stopped: false,
+        stopReason: undefined,
         failedJobs: [],
       };
     }
-
-    let startedJobs = 0;
-    let finishedJobs = 0;
 
     const summary = await runQueue({
       runId,
@@ -171,30 +190,54 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       outputStore,
       processingMetadataStore,
       onJobStart: async ({ job, attemptNo }) => {
-        startedJobs += 1;
-        log(`Starting [${startedJobs}/${runnableJobs}] attempt ${attemptNo} for ${job.inputPath}`);
+        log(`Attempt ${attemptNo}: ${job.inputPath}`);
         await logger.info("Job started", {
           runId,
           jobId: job.id,
           attemptNo,
-          progress: `${startedJobs}/${runnableJobs}`,
           inputPath: job.inputPath,
           outputPath: job.outputPath,
         });
       },
+      onPreprocessPrepared: async ({ job, metadata, preparedImagePath }) => {
+        log(
+          `Prepared ${job.inputPath} -> ${metadata.apiSize} padded=${metadata.canvasWidth}x${metadata.canvasHeight} cropBack=${
+            metadata.cropBackToOriginal ? "yes" : "no"
+          }`,
+        );
+        await logger.info("Image preprocessed", {
+          runId,
+          jobId: job.id,
+          inputPath: job.inputPath,
+          outputPath: job.outputPath,
+          apiSize: metadata.apiSize,
+          sourceWidth: metadata.sourceWidth,
+          sourceHeight: metadata.sourceHeight,
+          canvasWidth: metadata.canvasWidth,
+          canvasHeight: metadata.canvasHeight,
+          fill: metadata.fill,
+          cropBackToOriginal: metadata.cropBackToOriginal,
+          uncroppedOutputPath: metadata.uncroppedOutputPath,
+        });
+        await logger.debug("Image preprocessing details", {
+          runId,
+          jobId: job.id,
+          preparedImagePath,
+          sourceRectX: metadata.sourceRectX,
+          sourceRectY: metadata.sourceRectY,
+          sourceRectWidth: metadata.sourceRectWidth,
+          sourceRectHeight: metadata.sourceRectHeight,
+        });
+      },
       onJobFinish: async ({ job, result }) => {
-        finishedJobs += 1;
         const duration = formatDuration(result.durationMs);
+        const progress = formatProgress(jobStore.countByStatus(runId));
         if (result.status === "succeeded") {
-          log(
-            `Completed [${finishedJobs}/${runnableJobs}] ${job.inputPath} -> ${
-              result.outputPath ?? job.outputPath
-            } in ${duration}`,
-          );
+          log(`Completed ${progress} ${job.inputPath} in ${duration}`);
           await logger.info("Job completed", {
             runId,
             jobId: job.id,
-            progress: `${finishedJobs}/${runnableJobs}`,
+            progress,
             inputPath: job.inputPath,
             outputPath: result.outputPath ?? job.outputPath,
             durationMs: result.durationMs,
@@ -204,14 +247,14 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 
         if (result.status === "retryable") {
           log(
-            `Will retry [${finishedJobs}/${runnableJobs}] ${job.inputPath} after ${duration} [${
+            `Will retry ${progress} ${job.inputPath} after ${duration} [${
               result.errorType ?? "unknown"
             }] ${result.errorMessage ?? ""}`.trim(),
           );
           await logger.warn("Job scheduled for retry", {
             runId,
             jobId: job.id,
-            progress: `${finishedJobs}/${runnableJobs}`,
+            progress,
             inputPath: job.inputPath,
             durationMs: result.durationMs,
             errorType: result.errorType,
@@ -222,20 +265,25 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         }
 
         log(
-          `Failed [${finishedJobs}/${runnableJobs}] ${job.inputPath} after ${duration} [${
+          `Failed ${progress} ${job.inputPath} after ${duration} [${
             result.errorType ?? "unknown"
           }] ${result.errorMessage ?? ""}`.trim(),
         );
         await logger.error("Job failed", {
           runId,
           jobId: job.id,
-          progress: `${finishedJobs}/${runnableJobs}`,
+          progress,
           inputPath: job.inputPath,
           durationMs: result.durationMs,
           errorType: result.errorType,
           errorMessage: result.errorMessage,
         });
       },
+      onCooldown: async ({ delayMs, until, reason }) => {
+        log(`Cooling down for ${formatDuration(delayMs)} until ${until} [${reason}]`);
+        await logger.warn("Run cooldown started", { runId, delayMs, until, reason });
+      },
+      stopRequested: options.stopRequested,
     });
     const counts = jobStore.countByStatus(runId);
     const failedJobs = jobStore.listFailedByRun(runId).map((job) => ({
@@ -268,6 +316,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       skipped: counts.skipped,
       pending: counts.pending,
       stopped: summary.stopped,
+      stopReason: summary.stopReason,
       failedJobs,
     };
   } finally {
@@ -284,6 +333,17 @@ function formatDuration(durationMs: number | undefined): string {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.round(totalSeconds % 60);
   return `${minutes}m ${seconds}s`;
+}
+
+function formatProgress(counts: Record<JobStatus, number>): string {
+  const workDone = counts.succeeded + counts.failed;
+  const workTotal = counts.succeeded + counts.failed + counts.pending + counts.retryable +
+    counts.running;
+  const waiting = counts.pending + counts.retryable;
+  const details = [`work=${workDone}/${workTotal}`, `left=${waiting}`];
+  if (counts.retryable > 0) details.push(`retry=${counts.retryable}`);
+  if (counts.failed > 0) details.push(`failed=${counts.failed}`);
+  return `[${details.join(", ")}]`;
 }
 
 function shouldSkipExisting(outputPath: string, output: AppConfig["output"]): boolean {

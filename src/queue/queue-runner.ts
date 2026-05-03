@@ -24,10 +24,13 @@ export interface QueueRunnerOptions {
   outputStore: OutputStore;
   processingMetadataStore?: ProcessingMetadataStore;
   onJobStart?: (event: { job: JobRecord; attemptNo: number }) => void | Promise<void>;
+  onPreprocessPrepared?: Parameters<typeof runJob>[0]["onPreprocessPrepared"];
   onJobFinish?: (event: {
     job: JobRecord;
     result: Awaited<ReturnType<typeof runJob>>;
   }) => void | Promise<void>;
+  onCooldown?: (event: { until: string; delayMs: number; reason: string }) => void | Promise<void>;
+  stopRequested?: () => boolean;
   now?: () => string;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -38,6 +41,7 @@ export interface QueueRunSummary {
   retryable: number;
   failed: number;
   stopped: boolean;
+  stopReason?: "error" | "interrupted";
 }
 
 export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSummary> {
@@ -52,6 +56,12 @@ export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSum
   };
 
   while (!summary.stopped) {
+    if (options.stopRequested?.()) {
+      summary.stopped = true;
+      summary.stopReason = "interrupted";
+      break;
+    }
+
     const jobs = options.jobStore.listRunnable(
       options.runId,
       (options.now ?? (() => new Date().toISOString()))(),
@@ -62,16 +72,34 @@ export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSum
     const results = await Promise.all(jobs.map((job) => runOneJob(job, options, sleepImpl)));
 
     for (const result of results) {
+      if (!result) {
+        summary.stopped = true;
+        summary.stopReason = "interrupted";
+        continue;
+      }
       summary.processed += 1;
       summary[result.status] += 1;
       if (result.stopRun || (options.failFast && result.status === "failed")) {
         summary.stopped = true;
+        summary.stopReason = "error";
       }
+    }
+
+    if (!summary.stopped && options.stopRequested?.()) {
+      summary.stopped = true;
+      summary.stopReason = "interrupted";
+    }
+
+    if (!summary.stopped) {
+      await waitForRunCooldown(results, options, sleepImpl);
     }
   }
 
   options.runStore.updateCounts(options.runId);
-  if (summary.stopped) {
+  if (summary.stopReason === "interrupted") {
+    // Keep the run resumable. Completed in-flight jobs have already persisted their final state.
+    options.runStore.updateStatus(options.runId, "running");
+  } else if (summary.stopped) {
     options.runStore.updateStatus(
       options.runId,
       "failed",
@@ -94,6 +122,7 @@ async function runOneJob(
   sleepImpl: (ms: number) => Promise<void>,
 ) {
   if (options.minDelayMs > 0) await sleepImpl(options.minDelayMs);
+  if (options.stopRequested?.()) return undefined;
 
   await options.onJobStart?.({ job, attemptNo: job.attempts + 1 });
   const result = await runJob({
@@ -108,9 +137,30 @@ async function runOneJob(
     attemptStore: options.attemptStore,
     outputStore: options.outputStore,
     processingMetadataStore: options.processingMetadataStore,
+    onPreprocessPrepared: options.onPreprocessPrepared,
     now: options.now,
   });
 
   await options.onJobFinish?.({ job, result });
   return result;
+}
+
+async function waitForRunCooldown(
+  results: Array<Awaited<ReturnType<typeof runOneJob>>>,
+  options: QueueRunnerOptions,
+  sleepImpl: (ms: number) => Promise<void>,
+): Promise<void> {
+  const now = options.now ?? (() => new Date().toISOString());
+  const cooldownUntil = results
+    .filter((result) => result?.status === "retryable" && result.nextAttemptAt)
+    .map((result) => result!.nextAttemptAt!)
+    .sort()
+    .at(-1);
+  if (!cooldownUntil) return;
+
+  const delayMs = Date.parse(cooldownUntil) - Date.parse(now());
+  if (delayMs <= 0) return;
+
+  await options.onCooldown?.({ until: cooldownUntil, delayMs, reason: "retryable_failure" });
+  await sleepImpl(delayMs);
 }

@@ -40,7 +40,9 @@ deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml
 - With `output.formatFromApi: true`, the output file extension follows response `output_format`.
 - With `output.formatFromApi: false`, the output file extension follows configured
   `openai.image.outputFormat`.
-- The run can be resumed if the same config hash is used and `queue.resume` is enabled.
+- The run can be resumed if the same loaded config hash is used, the previous run is still
+  `running`, and `queue.resume` is enabled. Current input scan results are merged into the existing
+  run.
 
 ## Failure Signals
 
