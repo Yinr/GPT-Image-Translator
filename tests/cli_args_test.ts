@@ -75,6 +75,20 @@ Deno.test("parseCliArgs parses help flag", () => {
   assertEquals(args.help, true);
 });
 
+Deno.test("parseCliArgs parses version flag", () => {
+  const args = parseCliArgs(["--version"]);
+
+  assertEquals(args.command, "version");
+  assertEquals(args.version, true);
+});
+
+Deno.test("parseCliArgs parses version command", () => {
+  const args = parseCliArgs(["version"]);
+
+  assertEquals(args.command, "version");
+  assertEquals(args.version, false);
+});
+
 Deno.test("parseCliArgs parses config upgrade flags", () => {
   const args = parseCliArgs([
     "config",

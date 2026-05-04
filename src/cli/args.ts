@@ -1,10 +1,12 @@
 import { parseArgs } from "@std/cli/parse-args";
+import { APP_DISPLAY_NAME, APP_NAME } from "../shared/app-meta.ts";
 
 export interface CliArgs {
-  command: "translate" | "status" | "inspect" | "failed" | "config-upgrade";
+  command: "translate" | "status" | "inspect" | "failed" | "config-upgrade" | "version";
   config?: string;
   dryRun: boolean;
   help: boolean;
+  version: boolean;
   fullUpdate: boolean;
   allowDropComments: boolean;
   runId?: string;
@@ -12,13 +14,13 @@ export interface CliArgs {
   maxSuccess?: number;
 }
 
-export const APP_NAME = "gpt-image-translator";
-
-export const HELP_TEXT = `GPT Image Translator
+export const HELP_TEXT = `${APP_DISPLAY_NAME}
 
 批量翻译目录中的图片，保持原目录结构输出，并将批次（run）和图片任务（job）状态保存在 SQLite 中。
 
 Usage:
+  ${APP_NAME} --version
+  ${APP_NAME} version
   ${APP_NAME} --config <path> [--dry-run] [--max-success <n>]
   ${APP_NAME} status --config <path> [--limit <n>]
   ${APP_NAME} inspect --config <path> --run <runId>
@@ -26,6 +28,7 @@ Usage:
   ${APP_NAME} config upgrade --config <path> [--dry-run] [--full-update]
 
 Commands:
+  version    显示程序版本
   translate  执行图片翻译任务，默认命令
   status     查看最近批次（runs）列表
   inspect    查看指定批次（run）的详细信息
@@ -34,6 +37,7 @@ Commands:
 
 Options:
   -c, --config <path>  配置文件路径
+      --version        显示程序版本
       --dry-run        只扫描和规划，不实际请求 API
       --max-success <n>  成功完成 n 个新图片任务后停止继续调度
   -r, --run <runId>    inspect / failed 使用的批次 id（run id）
@@ -43,6 +47,8 @@ Options:
   -h, --help           显示帮助
 
 Examples:
+  ${APP_NAME} --version
+  ${APP_NAME} version
   ${APP_NAME} --config ./config.yaml
   ${APP_NAME} --config ./config.yaml --dry-run
   ${APP_NAME} --config ./config.yaml --max-success 5
@@ -55,16 +61,19 @@ export function parseCliArgs(args: string[]): CliArgs {
   const command = readCommand(args);
   const rest = command === "config-upgrade"
     ? args.slice(2)
+    : command === "version"
+    ? args.slice(1)
     : isCommand(args[0])
     ? args.slice(1)
     : args;
   const parsed = parseArgs(rest, {
-    boolean: ["dry-run", "help", "full-update", "allow-drop-comments"],
+    boolean: ["dry-run", "help", "version", "full-update", "allow-drop-comments"],
     string: ["config", "run", "max-success"],
     alias: { config: "c", run: "r", help: "h" },
     default: {
       "dry-run": false,
       help: false,
+      version: false,
       "full-update": false,
       "allow-drop-comments": false,
       limit: 20,
@@ -79,10 +88,11 @@ export function parseCliArgs(args: string[]): CliArgs {
   }
 
   return {
-    command,
+    command: parsed.version ? "version" : command,
     config: parsed.config,
     dryRun: parsed["dry-run"],
     help: parsed.help,
+    version: parsed.version,
     fullUpdate: parsed["full-update"],
     allowDropComments: parsed["allow-drop-comments"],
     runId: parsed.run,
@@ -96,6 +106,7 @@ function readCommand(args: string[]): CliArgs["command"] {
     if (args[1] === "upgrade") return "config-upgrade";
     throw new Error(`Unknown command: ${[args[0], args[1]].filter(Boolean).join(" ")}`);
   }
+  if (args[0] === "version") return "version";
   if (isCommand(args[0])) return args[0];
   if (args[0] && !args[0].startsWith("-")) {
     throw new Error(`Unknown command: ${args[0]}`);

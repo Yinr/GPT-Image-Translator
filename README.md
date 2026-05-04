@@ -1,6 +1,8 @@
 # GPT Image Translator
 
-一个基于 Deno 的命令行工具，用于批量翻译目录中的图片。程序会递归扫描输入目录，为每张图片创建一个持久化图片任务（job），将图片发送到 OpenAI-compatible `/v1/images/edits` 接口，并按原目录结构写入输出目录。
+一个基于 Deno
+的命令行工具，用于批量翻译目录中的图片。程序会递归扫描输入目录，为每张图片创建一个持久化图片任务（job），将图片发送到
+OpenAI-compatible `/v1/images/edits` 接口，并按原目录结构写入输出目录。
 
 ## 特性
 
@@ -27,6 +29,46 @@
 - Deno 2.x
 - 可访问的 OpenAI-compatible 图片编辑 API
 - API key（API 凭据），可以通过环境变量或配置文件提供
+
+## 版本
+
+查看当前程序版本：
+
+```bash
+gpt-image-translator --version
+gpt-image-translator version
+```
+
+更新程序版本号：
+
+```bash
+# 0.1.0 -> 0.1.1
+deno task version:patch
+
+# 0.1.0 -> 0.2.0
+deno task version:minor
+
+# 0.1.0 -> 1.0.0
+deno task version:major
+```
+
+推荐的发布流程：
+
+```bash
+# 1. 更新版本号
+deno task version:patch
+
+# 2. 校验
+deno task check
+deno task test
+
+# 3. 编译需要的平台
+deno task compile:win
+
+# 4. 提交并打 tag
+git commit -am "release: prepare v0.1.1"
+git tag v0.1.1
+```
 
 ## 快速开始
 
@@ -148,7 +190,8 @@ logging:
   file: true
 ```
 
-日志文件会按 `run id` 写入配置的日志目录，适合记录批次开始/结束、图片任务开始/完成/失败，以及重试、冷却、错误分类等诊断信息。
+日志文件会按 `run id`
+写入配置的日志目录，适合记录批次开始/结束、图片任务开始/完成/失败，以及重试、冷却、错误分类等诊断信息。
 
 ## 断点续跑
 
@@ -164,11 +207,14 @@ config）下最近一个 `running` 状态的批次（run），并在找到时继
 - 新增输入文件会加入当前 run；已经不存在的旧输入文件暂时不会自动取消。
 - 如果 `output.skipExisting` 生效，已有输出文件可能让未完成 job 转为 `skipped`。
 
-注意：当前版本仍用完整配置哈希（config hash）匹配，因此更换 API key、API 供应商或适配器相关配置可能导致无法自动续跑。后续计划会梳理 config hash 纳入字段，并引入独立的任务指纹。
+注意：当前版本仍用完整配置哈希（config hash）匹配，因此更换 API key、API
+供应商或适配器相关配置可能导致无法自动续跑。后续计划会梳理 config hash
+纳入字段，并引入独立的任务指纹。
 
 ## 执行上限
 
-`translate` 支持 `--max-success <n>`，用于在本次批次执行中成功完成指定数量的新图片任务后停止继续调度。
+`translate` 支持
+`--max-success <n>`，用于在本次批次执行中成功完成指定数量的新图片任务后停止继续调度。
 
 - 只统计本次 invocation 新成功的图片任务（jobs）。
 - 不计入之前 run 中已经成功的 jobs。
@@ -180,7 +226,8 @@ config）下最近一个 `running` 状态的批次（run），并在找到时继
 
 ## 长宽比预处理
 
-`gpt-image-2` 只支持固定画布尺寸。遇到非标准长宽比图片时，可以启用补边预处理，让程序先把原图居中放到最接近的支持比例画布中，再发送给接口：
+`gpt-image-2`
+只支持固定画布尺寸。遇到非标准长宽比图片时，可以启用补边预处理，让程序先把原图居中放到最接近的支持比例画布中，再发送给接口：
 
 ```yaml
 preprocess:
@@ -191,7 +238,9 @@ preprocess:
     intermediateDir: .intermediate
 ```
 
-启用后，程序会自动选择 `1024x1024`、`1024x1536` 或 `1536x1024` 作为请求 `size`。`cropBackToOriginal: true` 时，最终输出会裁剪回原图区域，未裁剪的接口输出会保留在 `outputDir/intermediateDir` 下，方便排查模型返回效果。
+启用后，程序会自动选择 `1024x1024`、`1024x1536` 或 `1536x1024` 作为请求
+`size`。`cropBackToOriginal: true` 时，最终输出会裁剪回原图区域，未裁剪的接口输出会保留在
+`outputDir/intermediateDir` 下，方便排查模型返回效果。
 
 默认配置中该功能关闭，保持原图直接提交给接口。
 

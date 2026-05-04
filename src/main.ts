@@ -2,6 +2,7 @@ import { loadConfig } from "./config/load.ts";
 import { isConfigOutdated, upgradeConfigFile } from "./config/upgrade.ts";
 import { CURRENT_CONFIG_VERSION } from "./config/defaults.ts";
 import { HELP_TEXT, parseCliArgs } from "./cli/args.ts";
+import { APP_NAME, APP_VERSION } from "./shared/app-meta.ts";
 import { execute, type ExecuteResult } from "./cli/run.ts";
 import {
   formatFailedJobs,
@@ -28,6 +29,11 @@ export async function main(args: string[]): Promise<void> {
   }
   if (cli.help) {
     printHelp();
+    return;
+  }
+
+  if (cli.command === "version") {
+    console.log(APP_VERSION);
     return;
   }
 
@@ -66,7 +72,7 @@ export async function main(args: string[]): Promise<void> {
   const config = await loadConfig(configPath);
   if (isConfigOutdated(config)) {
     console.warn(
-      `Config version ${config.configVersion} is older than current version ${CURRENT_CONFIG_VERSION}. Run "gpt-image-translator config upgrade --config ${configPath}" to update it.`,
+      `Config version ${config.configVersion} is older than current version ${CURRENT_CONFIG_VERSION}. Run "${APP_NAME} config upgrade --config ${configPath}" to update it.`,
     );
   }
   if (cli.command === "status") {
