@@ -1,10 +1,12 @@
 import type {
   AttemptRecord,
+  AttemptStatus,
   JobRecord,
   JobStatus,
   OutputRecord,
   ProcessingMetadataRecord,
   RunRecord,
+  RunStatus,
 } from "../shared/types.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
@@ -14,7 +16,7 @@ import { RunStore } from "../storage/run-store.ts";
 
 export interface RunSummary {
   id: string;
-  status: RunRecord["status"];
+  status: RunStatus;
   configHash: string;
   inputDir: string;
   outputDir: string;
@@ -60,8 +62,8 @@ export interface JobDetail {
   runId: string;
   inputPath: string;
   outputPath: string;
-  status: JobRecord["status"];
-  attempts: AttemptRecord[];
+  status: JobStatus;
+  attempts: AttemptDetail[];
   nextAttemptAt?: string;
   lastErrorType?: string;
   lastErrorMessage?: string;
@@ -70,6 +72,20 @@ export interface JobDetail {
   completedAt?: string;
   output?: OutputDetail;
   processing?: ProcessingMetadataDetail;
+}
+
+export interface AttemptDetail {
+  id: string;
+  jobId: string;
+  attemptNo: number;
+  status: AttemptStatus;
+  httpStatus?: number;
+  errorType?: string;
+  errorMessage?: string;
+  retryAfterMs?: number;
+  durationMs?: number;
+  startedAt: string;
+  finishedAt?: string;
 }
 
 export interface JobListFilter {
@@ -123,7 +139,7 @@ export class RunQueryService {
       inputPath: job.inputPath,
       outputPath: job.outputPath,
       status: job.status,
-      attempts: this.attempts.listByJob(job.id),
+      attempts: this.attempts.listByJob(job.id).map(toAttemptDetail),
       nextAttemptAt: job.nextAttemptAt,
       lastErrorType: job.lastErrorType,
       lastErrorMessage: job.lastErrorMessage,
@@ -134,6 +150,22 @@ export class RunQueryService {
       processing: toProcessingMetadataDetail(this.processingMetadata?.getByJob(job.id)),
     };
   }
+}
+
+function toAttemptDetail(attempt: AttemptRecord): AttemptDetail {
+  return {
+    id: attempt.id,
+    jobId: attempt.jobId,
+    attemptNo: attempt.attemptNo,
+    status: attempt.status,
+    httpStatus: attempt.httpStatus,
+    errorType: attempt.errorType,
+    errorMessage: attempt.errorMessage,
+    retryAfterMs: attempt.retryAfterMs,
+    durationMs: attempt.durationMs,
+    startedAt: attempt.startedAt,
+    finishedAt: attempt.finishedAt,
+  };
 }
 
 function toRunSummary(run: RunRecord): RunSummary {
