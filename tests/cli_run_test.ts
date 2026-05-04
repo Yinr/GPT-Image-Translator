@@ -82,6 +82,50 @@ Deno.test("execute logs planning and job progress", async () => {
   );
 });
 
+Deno.test("execute stops after max success and keeps run resumable", async () => {
+  const inputDir = await Deno.makeTempDir();
+  const outputDir = await Deno.makeTempDir();
+  const stateDir = await Deno.makeTempDir();
+  await Deno.writeFile(join(inputDir, "a.jpg"), new Uint8Array([1]));
+  await Deno.writeFile(join(inputDir, "b.jpg"), new Uint8Array([1]));
+
+  const logs: string[] = [];
+  const client: ImageEditClientLike = {
+    editImage: () => Promise.resolve({ bytes: new Uint8Array([1]), outputFormat: "png" }),
+  };
+  const config = {
+    ...structuredClone(defaultConfig),
+    inputDir,
+    outputDir,
+    prompt: "translate",
+    queue: { ...defaultConfig.queue, concurrency: 1 },
+    storage: { sqlitePath: join(stateDir, "translator.db") },
+  };
+
+  const result = await execute({
+    dryRun: false,
+    log: (message) => logs.push(message),
+    client,
+    config,
+    maxSuccess: 1,
+  });
+
+  assertEquals(result.succeeded, 1);
+  assertEquals(result.pending, 1);
+  assertEquals(result.stopped, true);
+  assertEquals(result.stopReason, "success_limit");
+  assertEquals(result.maxSuccess, 1);
+  assertEquals(logs.some((message) => message.includes("maxSuccess=1")), true);
+
+  const db = await openDatabase(config.storage.sqlitePath);
+  try {
+    const runs = new RunStore(db);
+    assertEquals(runs.get(result.runId!)?.status, "running");
+  } finally {
+    db.close();
+  }
+});
+
 Deno.test("execute keeps run resumable when graceful stop is requested", async () => {
   const inputDir = await Deno.makeTempDir();
   const outputDir = await Deno.makeTempDir();

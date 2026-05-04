@@ -40,6 +40,27 @@ Deno.test("formatSummary returns concise translate summary", () => {
   );
 });
 
+Deno.test("formatSummary includes success limit stop reason", () => {
+  assertEquals(
+    formatSummary({
+      runId: "run-1",
+      resumed: false,
+      totalImages: 3,
+      plannedJobs: 3,
+      processed: 2,
+      succeeded: 2,
+      retryable: 0,
+      failed: 0,
+      skipped: 0,
+      pending: 1,
+      stopped: true,
+      stopReason: "success_limit",
+      maxSuccess: 2,
+    }, false),
+    "STOPPED | run=run-1 | resumed=no | processed=2 | succeeded=2 | retryable=0 | failed=0 | skipped=0 | pending=1 | stopped=yes | stopReason=success_limit | maxSuccess=2",
+  );
+});
+
 Deno.test("formatInterruptMessage returns clear interruption messages", () => {
   assertEquals(
     formatInterruptMessage("graceful"),

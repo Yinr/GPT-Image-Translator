@@ -21,6 +21,7 @@ export interface ExecuteOptions {
   log?: (message: string) => void;
   client?: ImageEditClientLike;
   stopRequested?: () => boolean;
+  maxSuccess?: number;
 }
 
 export interface ExecuteResult {
@@ -36,7 +37,8 @@ export interface ExecuteResult {
   skipped?: number;
   pending?: number;
   stopped?: boolean;
-  stopReason?: "error" | "interrupted";
+  stopReason?: "error" | "interrupted" | "success_limit";
+  maxSuccess?: number;
   failedJobs?: Array<{
     inputPath: string;
     outputPath: string;
@@ -78,7 +80,9 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     log(
       `${
         resumed ? "Resuming" : "Starting"
-      } run ${runId}. ${runMode}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}`,
+      } run ${runId}. ${runMode}. concurrency=${options.config.queue.concurrency}, minDelayMs=${options.config.queue.minDelayMs}, formatFromApi=${options.config.output.formatFromApi}${
+        options.maxSuccess !== undefined ? `, maxSuccess=${options.maxSuccess}` : ""
+      }`,
     );
     await logger.info(resumed ? "Run resumed" : "Run started", {
       runId,
@@ -87,6 +91,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       concurrency: options.config.queue.concurrency,
       minDelayMs: options.config.queue.minDelayMs,
       formatFromApi: options.config.output.formatFromApi,
+      maxSuccess: options.maxSuccess,
     });
     if (options.config.preprocess.aspectPad.enabled) {
       log(
@@ -159,6 +164,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         runId,
         logFile: logger.filePath,
         resumed,
+        maxSuccess: options.maxSuccess,
         totalImages: images.length,
         plannedJobs: images.length,
         processed: 0,
@@ -284,6 +290,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         await logger.warn("Run cooldown started", { runId, delayMs, until, reason });
       },
       stopRequested: options.stopRequested,
+      maxSuccess: options.maxSuccess,
     });
     const counts = jobStore.countByStatus(runId);
     const failedJobs = jobStore.listFailedByRun(runId).map((job) => ({
@@ -301,12 +308,15 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       skipped: counts.skipped,
       pending: counts.pending,
       stopped: summary.stopped,
+      stopReason: summary.stopReason,
+      maxSuccess: options.maxSuccess,
     });
 
     return {
       runId,
       logFile: logger.filePath,
       resumed,
+      maxSuccess: options.maxSuccess,
       totalImages: images.length,
       plannedJobs: images.length,
       processed: summary.processed,

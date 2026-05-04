@@ -11,6 +11,7 @@
 - 使用 SQLite 保存 runs / jobs / attempts / outputs
 - 支持断点续跑、重试和失败查询
 - 支持 `status`、`inspect`、`failed` 查询命令
+- 支持按“本次新增成功张数”设置执行上限
 - 支持配置文件版本升级
 - 支持可选诊断日志
 - 支持可选长宽比补边预处理和裁剪回原图区域
@@ -72,6 +73,12 @@ gpt-image-translator --config ./config.yaml --dry-run
 
 ```bash
 gpt-image-translator --config ./config.yaml
+```
+
+只跑一个小批次，成功翻译 5 张新图片后停止继续调度：
+
+```bash
+gpt-image-translator --config ./config.yaml --max-success 5
 ```
 
 查看最近 runs：
@@ -140,6 +147,18 @@ logging:
 
 注意：当前版本仍用完整配置 hash 匹配，因此更换 API key 或 provider 配置可能导致无法自动
 续跑。后续计划会引入独立的任务指纹，让 provider/API key 变化不再影响同一翻译任务的续跑。
+
+## 执行上限
+
+`translate` 支持 `--max-success <n>`，用于在本次执行中成功完成指定数量的新图片后停止继续调度。
+
+- 只统计本次 invocation 新成功的 jobs。
+- 不计入之前 run 中已经成功的 jobs。
+- 不计入 `skipped` jobs。
+- 达到上限后，不再启动新的 job。
+- 如果有并发中的 job，程序会等待它们完成，再以可续跑状态结束当前 run。
+
+这适合小批量验证、额度紧张时的受控运行，或者先抽样检查 prompt/adapter 效果。
 
 ## 长宽比预处理
 

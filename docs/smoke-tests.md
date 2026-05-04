@@ -21,6 +21,12 @@ Run this command from the repository root. The sample config uses repository-rel
 deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml
 ```
 
+For a controlled sample run, you can also stop after a small number of new successes:
+
+```bash
+deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml --max-success 3
+```
+
 ## Expected Inputs
 
 - `.local/smoke-test/037.jpg` or another test image in `.local/smoke-test/`
@@ -43,6 +49,9 @@ deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml
 - The run can be resumed if the same loaded config hash is used, the previous run is still
   `running`, and `queue.resume` is enabled. Current input scan results are merged into the existing
   run.
+- With `--max-success <n>`, the CLI stops scheduling new jobs after `n` newly succeeded images in the
+  current invocation, waits for any in-flight jobs to finish, and leaves the run resumable if work
+  remains.
 
 ## Failure Signals
 

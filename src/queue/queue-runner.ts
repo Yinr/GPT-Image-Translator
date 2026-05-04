@@ -31,6 +31,7 @@ export interface QueueRunnerOptions {
   }) => void | Promise<void>;
   onCooldown?: (event: { until: string; delayMs: number; reason: string }) => void | Promise<void>;
   stopRequested?: () => boolean;
+  maxSuccess?: number;
   now?: () => string;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -41,7 +42,7 @@ export interface QueueRunSummary {
   retryable: number;
   failed: number;
   stopped: boolean;
-  stopReason?: "error" | "interrupted";
+  stopReason?: "error" | "interrupted" | "success_limit";
 }
 
 export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSummary> {
@@ -86,6 +87,11 @@ export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSum
       summary.stopReason = "interrupted";
     }
 
+    if (!summary.stopped && reachedSuccessLimit(summary, options.maxSuccess, inFlight.size)) {
+      summary.stopped = true;
+      summary.stopReason = "success_limit";
+    }
+
     if (!summary.stopped) {
       const cooldownDelayMs = cooldownDelay(cooldownUntil, now());
       if (cooldownDelayMs > 0) {
@@ -114,6 +120,7 @@ export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSum
 
       let launched = false;
       while (inFlight.size < concurrency) {
+        if (!canLaunchAnotherJob(summary, options.maxSuccess, inFlight.size)) break;
         const job = nextRunnableJob(options, now(), concurrency, inFlight);
         if (!job) break;
         launchJob(job);
@@ -128,7 +135,7 @@ export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSum
   }
 
   options.runStore.updateCounts(options.runId);
-  if (summary.stopReason === "interrupted") {
+  if (summary.stopReason === "interrupted" || summary.stopReason === "success_limit") {
     // Keep the run resumable. Completed in-flight jobs have already persisted their final state.
     options.runStore.updateStatus(options.runId, "running");
   } else if (summary.stopped) {
@@ -173,6 +180,23 @@ function processCompleted(
       summary.stopReason = "error";
     }
   }
+}
+
+function reachedSuccessLimit(
+  summary: QueueRunSummary,
+  maxSuccess: number | undefined,
+  inFlightCount: number,
+): boolean {
+  return maxSuccess !== undefined && maxSuccess > 0 && inFlightCount === 0 &&
+    summary.succeeded >= maxSuccess;
+}
+
+function canLaunchAnotherJob(
+  summary: QueueRunSummary,
+  maxSuccess: number | undefined,
+  inFlightCount: number,
+): boolean {
+  return maxSuccess === undefined || maxSuccess <= 0 || summary.succeeded + inFlightCount < maxSuccess;
 }
 
 function nextRunnableJob(

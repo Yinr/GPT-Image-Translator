@@ -80,6 +80,8 @@ export function formatSummary(result: ExecuteResult, dryRun: boolean): string {
   const status = result.stopped
     ? result.stopReason === "interrupted"
       ? color ? bold(yellow("STOPPED")) : "STOPPED"
+      : result.stopReason === "success_limit"
+      ? color ? bold(yellow("STOPPED")) : "STOPPED"
       : color
       ? bold(red("STOPPED"))
       : "STOPPED"
@@ -101,6 +103,9 @@ export function formatSummary(result: ExecuteResult, dryRun: boolean): string {
     `pending=${result.pending ?? 0}`,
     `stopped=${result.stopped ? "yes" : "no"}`,
     result.stopReason ? `stopReason=${result.stopReason}` : undefined,
+    result.stopReason === "success_limit" && result.maxSuccess !== undefined
+      ? `maxSuccess=${result.maxSuccess}`
+      : undefined,
   ].filter((part): part is string => Boolean(part)).join(" | ");
 }
 

@@ -337,6 +337,428 @@ Deno.test("runQueue waits for all in-flight jobs after graceful stop is requeste
   }
 });
 
+Deno.test("runQueue stops scheduling new jobs after reaching success limit", async () => {
+  const db = openMemoryDatabase();
+  try {
+    const runStore = new RunStore(db);
+    const jobStore = new JobStore(db);
+    const attemptStore = new AttemptStore(db);
+    const outputStore = new OutputStore(db);
+    const outputDir = await Deno.makeTempDir();
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runStore.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    for (const inputPath of ["a", "b", "c"]) {
+      jobStore.upsert({
+        id: `job-${inputPath}`,
+        runId: "run-1",
+        inputPath,
+        outputPath: join(outputDir, `${inputPath}.png`),
+        now,
+      });
+    }
+
+    const started: string[] = [];
+    const client: ImageEditClientLike = {
+      editImage: () => Promise.resolve({ bytes: new Uint8Array([1]), outputFormat: "png" }),
+    };
+    const summary = await runQueue({
+      runId: "run-1",
+      prompt: "translate",
+      concurrency: 1,
+      minDelayMs: 0,
+      failFast: false,
+      formatFromApi: true,
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
+      client,
+      runStore,
+      jobStore,
+      attemptStore,
+      outputStore,
+      now: () => now,
+      sleep: () => Promise.resolve(),
+      maxSuccess: 2,
+      onJobStart: ({ job }) => {
+        started.push(job.inputPath);
+      },
+    });
+
+    const run = runStore.get("run-1");
+    const thirdJob = jobStore.findByInputPath("run-1", "c");
+
+    assertEquals(started, ["a", "b"]);
+    assertEquals(summary.processed, 2);
+    assertEquals(summary.succeeded, 2);
+    assertEquals(summary.stopped, true);
+    assertEquals(summary.stopReason, "success_limit");
+    assertEquals(run?.status, "running");
+    assertEquals(thirdJob?.status, "pending");
+  } finally {
+    db.close();
+  }
+});
+
+Deno.test("runQueue lets in-flight jobs finish after success limit is reached", async () => {
+  const db = openMemoryDatabase();
+  try {
+    const runStore = new RunStore(db);
+    const jobStore = new JobStore(db);
+    const attemptStore = new AttemptStore(db);
+    const outputStore = new OutputStore(db);
+    const outputDir = await Deno.makeTempDir();
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runStore.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    for (const inputPath of ["a", "b", "c"]) {
+      jobStore.upsert({
+        id: `job-${inputPath}`,
+        runId: "run-1",
+        inputPath,
+        outputPath: join(outputDir, `${inputPath}.png`),
+        now,
+      });
+    }
+
+    const started: string[] = [];
+    const finished: string[] = [];
+    const deferred = new Map<string, ReturnType<typeof createDeferred<void>>>();
+    for (const inputPath of ["a", "b"]) deferred.set(inputPath, createDeferred<void>());
+    const client: ImageEditClientLike = {
+      editImage: async (request) => {
+        await deferred.get(request.imagePath)!.promise;
+        finished.push(request.imagePath);
+        return { bytes: new Uint8Array([1]), outputFormat: "png" };
+      },
+    };
+
+    const summaryPromise = runQueue({
+      runId: "run-1",
+      prompt: "translate",
+      concurrency: 2,
+      minDelayMs: 0,
+      failFast: false,
+      formatFromApi: true,
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
+      client,
+      runStore,
+      jobStore,
+      attemptStore,
+      outputStore,
+      now: () => now,
+      sleep: () => Promise.resolve(),
+      maxSuccess: 2,
+      onJobStart: ({ job }) => {
+        started.push(job.inputPath);
+      },
+    });
+
+    await waitFor(() => started.length === 2);
+    deferred.get("a")!.resolve();
+    await waitFor(() => finished.length === 1);
+    assertEquals(started, ["a", "b"]);
+    deferred.get("b")!.resolve();
+
+    const summary = await summaryPromise;
+    const run = runStore.get("run-1");
+    const thirdJob = jobStore.findByInputPath("run-1", "c");
+
+    assertEquals(started, ["a", "b"]);
+    assertEquals(finished, ["a", "b"]);
+    assertEquals(summary.processed, 2);
+    assertEquals(summary.succeeded, 2);
+    assertEquals(summary.stopped, true);
+    assertEquals(summary.stopReason, "success_limit");
+    assertEquals(run?.status, "running");
+    assertEquals(thirdJob?.status, "pending");
+  } finally {
+    db.close();
+  }
+});
+
+Deno.test("runQueue does not over-launch concurrency when only one success slot remains", async () => {
+  const db = openMemoryDatabase();
+  try {
+    const runStore = new RunStore(db);
+    const jobStore = new JobStore(db);
+    const attemptStore = new AttemptStore(db);
+    const outputStore = new OutputStore(db);
+    const outputDir = await Deno.makeTempDir();
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runStore.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    for (const inputPath of ["a", "b", "c"]) {
+      jobStore.upsert({
+        id: `job-${inputPath}`,
+        runId: "run-1",
+        inputPath,
+        outputPath: join(outputDir, `${inputPath}.png`),
+        now,
+      });
+    }
+
+    const started: string[] = [];
+    const finished: string[] = [];
+    const deferred = new Map<string, ReturnType<typeof createDeferred<void>>>();
+    for (const inputPath of ["a", "b"]) deferred.set(inputPath, createDeferred<void>());
+    const client: ImageEditClientLike = {
+      editImage: async (request) => {
+        await deferred.get(request.imagePath)!.promise;
+        finished.push(request.imagePath);
+        return { bytes: new Uint8Array([1]), outputFormat: "png" };
+      },
+    };
+
+    const summaryPromise = runQueue({
+      runId: "run-1",
+      prompt: "translate",
+      concurrency: 2,
+      minDelayMs: 0,
+      failFast: false,
+      formatFromApi: true,
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
+      client,
+      runStore,
+      jobStore,
+      attemptStore,
+      outputStore,
+      now: () => now,
+      sleep: () => Promise.resolve(),
+      maxSuccess: 2,
+      onJobStart: ({ job }) => {
+        started.push(job.inputPath);
+      },
+    });
+
+    await waitFor(() => started.length === 2);
+    assertEquals(started, ["a", "b"]);
+
+    deferred.get("a")!.resolve();
+    await waitFor(() => finished.length === 1);
+    assertEquals(started, ["a", "b"]);
+
+    deferred.get("b")!.resolve();
+    const summary = await summaryPromise;
+    const thirdJob = jobStore.findByInputPath("run-1", "c");
+
+    assertEquals(summary.succeeded, 2);
+    assertEquals(summary.stopped, true);
+    assertEquals(summary.stopReason, "success_limit");
+    assertEquals(thirdJob?.status, "pending");
+  } finally {
+    db.close();
+  }
+});
+
+Deno.test("runQueue can continue after an in-flight job fails under success limit gating", async () => {
+  const db = openMemoryDatabase();
+  try {
+    const runStore = new RunStore(db);
+    const jobStore = new JobStore(db);
+    const attemptStore = new AttemptStore(db);
+    const outputStore = new OutputStore(db);
+    const outputDir = await Deno.makeTempDir();
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runStore.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    for (const inputPath of ["a", "b", "c"]) {
+      jobStore.upsert({
+        id: `job-${inputPath}`,
+        runId: "run-1",
+        inputPath,
+        outputPath: join(outputDir, `${inputPath}.png`),
+        now,
+      });
+    }
+
+    const started: string[] = [];
+    const deferred = new Map<string, ReturnType<typeof createDeferred<void>>>();
+    for (const inputPath of ["a", "b"]) deferred.set(inputPath, createDeferred<void>());
+    const client: ImageEditClientLike = {
+      editImage: async (request) => {
+        await deferred.get(request.imagePath)!.promise;
+        if (request.imagePath === "a") {
+          throw new ApiError({
+            kind: "bad_request",
+            retryable: false,
+            stopRun: false,
+            message: "bad input",
+            status: 400,
+          });
+        }
+        return { bytes: new Uint8Array([1]), outputFormat: "png" };
+      },
+    };
+
+    const summaryPromise = runQueue({
+      runId: "run-1",
+      prompt: "translate",
+      concurrency: 2,
+      minDelayMs: 0,
+      failFast: false,
+      formatFromApi: true,
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
+      client,
+      runStore,
+      jobStore,
+      attemptStore,
+      outputStore,
+      now: () => now,
+      sleep: () => Promise.resolve(),
+      maxSuccess: 2,
+      onJobStart: ({ job }) => {
+        started.push(job.inputPath);
+        if (job.inputPath === "c" && !deferred.has("c")) deferred.set("c", createDeferred<void>());
+      },
+    });
+
+    await waitFor(() => started.length === 2);
+    assertEquals(started, ["a", "b"]);
+
+    deferred.get("a")!.resolve();
+    deferred.get("b")!.resolve();
+    await waitFor(() => started.length === 3);
+    assertEquals(started, ["a", "b", "c"]);
+
+    deferred.get("c")!.resolve();
+    const summary = await summaryPromise;
+
+    assertEquals(summary.processed, 3);
+    assertEquals(summary.succeeded, 2);
+    assertEquals(summary.failed, 1);
+    assertEquals(summary.stopped, true);
+    assertEquals(summary.stopReason, "success_limit");
+  } finally {
+    db.close();
+  }
+});
+
+Deno.test("runQueue counts only new successes toward max success", async () => {
+  const db = openMemoryDatabase();
+  try {
+    const runStore = new RunStore(db);
+    const jobStore = new JobStore(db);
+    const attemptStore = new AttemptStore(db);
+    const outputStore = new OutputStore(db);
+    const outputDir = await Deno.makeTempDir();
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runStore.create({
+      id: "run-1",
+      status: "running",
+      configHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    for (const inputPath of ["a", "b", "c"]) {
+      jobStore.upsert({
+        id: `job-${inputPath}`,
+        runId: "run-1",
+        inputPath,
+        outputPath: join(outputDir, `${inputPath}.png`),
+        now,
+      });
+    }
+    jobStore.updateStatus({
+      id: "job-a",
+      status: "succeeded",
+      attempts: 1,
+      now,
+      completedAt: now,
+    });
+    runStore.updateCounts("run-1");
+
+    const started: string[] = [];
+    const client: ImageEditClientLike = {
+      editImage: () => Promise.resolve({ bytes: new Uint8Array([1]), outputFormat: "png" }),
+    };
+
+    const summary = await runQueue({
+      runId: "run-1",
+      prompt: "translate",
+      concurrency: 1,
+      minDelayMs: 0,
+      failFast: false,
+      formatFromApi: true,
+      retry: { maxAttempts: 3, initialDelayMs: 1, maxDelayMs: 10, backoffFactor: 2 },
+      client,
+      runStore,
+      jobStore,
+      attemptStore,
+      outputStore,
+      now: () => now,
+      sleep: () => Promise.resolve(),
+      maxSuccess: 2,
+      onJobStart: ({ job }) => {
+        started.push(job.inputPath);
+      },
+    });
+
+    const run = runStore.get("run-1");
+    const secondJob = jobStore.findByInputPath("run-1", "b");
+    const thirdJob = jobStore.findByInputPath("run-1", "c");
+
+    assertEquals(started, ["b", "c"]);
+    assertEquals(summary.processed, 2);
+    assertEquals(summary.succeeded, 2);
+    assertEquals(summary.stopped, true);
+    assertEquals(summary.stopReason, "success_limit");
+    assertEquals(run?.status, "running");
+    assertEquals(secondJob?.status, "succeeded");
+    assertEquals(thirdJob?.status, "succeeded");
+  } finally {
+    db.close();
+  }
+});
+
 Deno.test("runQueue does not start a job when stop is requested during min delay", async () => {
   const db = openMemoryDatabase();
   try {

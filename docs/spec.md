@@ -72,6 +72,12 @@ Direct execution:
 deno run -A src/main.ts --config ./config.example.yaml
 ```
 
+Translate also supports a CLI-only success limit for controlled runs:
+
+```bash
+deno run -A src/main.ts --config ./config.example.yaml --max-success 5
+```
+
 ## Project Structure
 
 ```text
@@ -247,6 +253,17 @@ scan input directory
   -> write output bytes to the chosen path
   -> persist status, attempts, and metadata
 ```
+
+Success-limit behavior:
+
+- `translate --max-success <n>` is a CLI-only execution control, not a YAML config field.
+- It counts only jobs that become `succeeded` during the current invocation.
+- Previously succeeded jobs from earlier invocations do not consume the limit.
+- `skipped` jobs do not consume the limit.
+- New job launch gating must respect `current succeeded in this invocation + in-flight jobs < maxSuccess`
+  so concurrency does not overshoot the remaining success budget.
+- Reaching the limit should stop launching new jobs, let current in-flight jobs finish, and leave the
+  run resumable if pending or retryable work remains.
 
 ## Aspect-Ratio Preprocessing Design
 

@@ -9,6 +9,7 @@ export interface CliArgs {
   allowDropComments: boolean;
   runId?: string;
   limit: number;
+  maxSuccess?: number;
 }
 
 export const APP_NAME = "gpt-image-translator";
@@ -18,7 +19,7 @@ export const HELP_TEXT = `GPT Image Translator
 批量翻译目录中的图片，保持原目录结构输出，并将运行状态保存在 SQLite 中。
 
 Usage:
-  ${APP_NAME} --config <path> [--dry-run]
+  ${APP_NAME} --config <path> [--dry-run] [--max-success <n>]
   ${APP_NAME} status --config <path> [--limit <n>]
   ${APP_NAME} inspect --config <path> --run <runId>
   ${APP_NAME} failed --config <path> --run <runId>
@@ -34,6 +35,7 @@ Commands:
 Options:
   -c, --config <path>  配置文件路径
       --dry-run        只扫描和规划，不实际请求 API
+      --max-success <n>  成功完成 n 张新图片后停止继续调度
   -r, --run <runId>    inspect / failed 使用的 run id
       --limit <n>      status 返回的最近 runs 数量，默认 20
       --full-update    完整重写配置为最新结构，会丢弃原格式和注释
@@ -43,6 +45,7 @@ Options:
 Examples:
   ${APP_NAME} --config ./config.yaml
   ${APP_NAME} --config ./config.yaml --dry-run
+  ${APP_NAME} --config ./config.yaml --max-success 5
   ${APP_NAME} status --config ./config.yaml --limit 10
   ${APP_NAME} inspect --config ./config.yaml --run run_123
   ${APP_NAME} config upgrade --config ./config.yaml --dry-run
@@ -57,7 +60,7 @@ export function parseCliArgs(args: string[]): CliArgs {
     : args;
   const parsed = parseArgs(rest, {
     boolean: ["dry-run", "help", "full-update", "allow-drop-comments"],
-    string: ["config", "run"],
+    string: ["config", "run", "max-success"],
     alias: { config: "c", run: "r", help: "h" },
     default: {
       "dry-run": false,
@@ -68,6 +71,13 @@ export function parseCliArgs(args: string[]): CliArgs {
     },
   });
 
+  const maxSuccess = parsed["max-success"] === undefined
+    ? undefined
+    : Number(parsed["max-success"]);
+  if (maxSuccess !== undefined && (!Number.isInteger(maxSuccess) || maxSuccess <= 0)) {
+    throw new Error("--max-success must be a positive integer");
+  }
+
   return {
     command,
     config: parsed.config,
@@ -77,6 +87,7 @@ export function parseCliArgs(args: string[]): CliArgs {
     allowDropComments: parsed["allow-drop-comments"],
     runId: parsed.run,
     limit: Number(parsed.limit ?? 20),
+    maxSuccess,
   };
 }
 

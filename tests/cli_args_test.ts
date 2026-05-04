@@ -25,6 +25,49 @@ Deno.test("parseCliArgs parses status limit", () => {
   assertEquals(args.limit, 5);
 });
 
+Deno.test("parseCliArgs parses max success for translate", () => {
+  const args = parseCliArgs(["--config", "config.yaml", "--max-success", "3"]);
+
+  assertEquals(args.command, "translate");
+  assertEquals(args.maxSuccess, 3);
+});
+
+Deno.test("parseCliArgs rejects zero max success", () => {
+  try {
+    parseCliArgs(["--config", "config.yaml", "--max-success", "0"]);
+    throw new Error("Expected parseCliArgs to reject zero max success");
+  } catch (error) {
+    assertEquals(
+      error instanceof Error ? error.message : String(error),
+      "--max-success must be a positive integer",
+    );
+  }
+});
+
+Deno.test("parseCliArgs rejects negative max success", () => {
+  try {
+    parseCliArgs(["--config", "config.yaml", "--max-success", "-1"]);
+    throw new Error("Expected parseCliArgs to reject negative max success");
+  } catch (error) {
+    assertEquals(
+      error instanceof Error ? error.message : String(error),
+      "--max-success must be a positive integer",
+    );
+  }
+});
+
+Deno.test("parseCliArgs rejects non-numeric max success", () => {
+  try {
+    parseCliArgs(["--config", "config.yaml", "--max-success", "abc"]);
+    throw new Error("Expected parseCliArgs to reject non-numeric max success");
+  } catch (error) {
+    assertEquals(
+      error instanceof Error ? error.message : String(error),
+      "--max-success must be a positive integer",
+    );
+  }
+});
+
 Deno.test("parseCliArgs parses help flag", () => {
   const args = parseCliArgs(["-h"]);
 

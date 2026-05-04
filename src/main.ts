@@ -94,6 +94,7 @@ export async function main(args: string[]): Promise<void> {
   const result = await execute({
     config,
     dryRun: cli.dryRun,
+    maxSuccess: cli.maxSuccess,
     log: (message) => console.log(formatTranslateLog(message)),
     stopRequested: interrupt?.stopRequested,
   }).finally(() => interrupt?.dispose());

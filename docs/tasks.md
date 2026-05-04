@@ -305,7 +305,7 @@ manual workflow document that does not include secrets or generated outputs.
 number of newly successful image jobs, even if more pending/retryable jobs remain. This is useful
 for small validation batches and controlled emergency runs.
 
-Status: planned, not part of `fix/retry-progress-resume-ux`.
+Status: completed.
 
 Target behavior:
 
@@ -325,10 +325,10 @@ Open design questions:
 
 Acceptance criteria:
 
-- [ ] Success limit can stop a run without marking remaining work as failed.
-- [ ] Summary clearly says the run stopped because the success limit was reached.
-- [ ] Existing resume behavior can continue remaining jobs later.
-- [ ] Tests cover sequential and concurrent cases.
+- [x] Success limit can stop a run without marking remaining work as failed.
+- [x] Summary clearly says the run stopped because the success limit was reached.
+- [x] Existing resume behavior can continue remaining jobs later.
+- [x] Tests cover sequential and concurrent cases.
 
 Verification:
 
