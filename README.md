@@ -109,6 +109,22 @@ openai:
 
 `config.yaml` 已被 `.gitignore` 忽略，避免误提交本地密钥。
 
+如果目标服务对请求头有要求，也可以自定义 `User-Agent`。`default` 表示程序默认值
+`GPT-Image-Translator/{版本号}`，当前版本号由程序内部统一维护。
+
+```yaml
+openai:
+  # 使用程序默认 UA
+  userAgent: default
+```
+
+也可以直接写完整 UA：
+
+```yaml
+openai:
+  userAgent: MyTranslator/1.0
+```
+
 最常用命令：
 
 ```bash

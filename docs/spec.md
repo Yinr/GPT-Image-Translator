@@ -2,8 +2,8 @@
 
 ## 目标
 
-构建一个基于 Deno 的命令行程序，用于批量翻译目录中的图片。程序会将每张图片发送到
-OpenAI-compatible 的 `gpt-image-2` 图像编辑接口，并使用配置中的 prompt 进行处理。
+构建一个基于 Deno 的命令行程序，用于批量翻译目录中的图片。程序会将每张图片发送到 OpenAI-compatible
+的 `gpt-image-2` 图像编辑接口，并使用配置中的 prompt 进行处理。
 
 系统必须满足以下要求：
 
@@ -13,8 +13,8 @@ OpenAI-compatible 的 `gpt-image-2` 图像编辑接口，并使用配置中的 p
 - 对瞬时失败进行重试
 - 支持续跑中断后的未完成批次
 
-当前主要使用者是本地运行批量翻译任务的操作者。设计上应保持核心执行逻辑独立于 CLI，
-以便未来 Web UI 直接复用队列、存储和 API 接入层。
+当前主要使用者是本地运行批量翻译任务的操作者。设计上应保持核心执行逻辑独立于 CLI， 以便未来 Web UI
+直接复用队列、存储和 API 接入层。
 
 ## 已确认的 API 行为
 
@@ -34,8 +34,8 @@ OpenAI-compatible 的 `gpt-image-2` 图像编辑接口，并使用配置中的 p
 
 - provider 层用于描述 API 账号归属、凭据、额度、路由、代理和健康度等运营层概念。
 - adapter 层用于描述请求路径、请求/响应字段差异、兼容逻辑和解析细节。
-- `docs/providers/pic2api.md` 记录了 `pic2api` adapter 的差异行为，尤其是
-  `size:auto` 回退到 `1:1` 以及推荐尺寸档位。
+- `docs/providers/pic2api.md` 记录了 `pic2api` adapter 的差异行为，尤其是 `size:auto` 回退到 `1:1`
+  以及推荐尺寸档位。
 - adapter 特有的请求逻辑应位于 `src/adapters/`；共享解析、重试和错误分类可以保留在
   `src/openai/`，前提是这些逻辑不依赖某个具体 adapter。
 - 当前配置继续沿用历史上的 `openai` 顶层块名称，而 `openai.adapter` 用于选择 adapter。
@@ -51,8 +51,7 @@ OpenAI-compatible 的 `gpt-image-2` 图像编辑接口，并使用配置中的 p
 
 优先库选择：
 
-- 优先使用 Deno Standard Library：`@std/path`、`@std/fs`、`@std/cli`、`@std/yaml`、
-  `@std/encoding`
+- 优先使用 Deno Standard Library：`@std/path`、`@std/fs`、`@std/cli`、`@std/yaml`、 `@std/encoding`
 - 依赖优先选择 JSR 源；仅在没有合适 JSR 方案或存在明确兼容性问题时使用 npm 或 URL import
 - SQLite 优先使用 `jsr:@db/sqlite`
 - 避免自行实现目录遍历、路径处理、CLI 解析、YAML 解析和 base64 解码等通用基础能力
@@ -179,9 +178,16 @@ logging:
 配置说明：
 
 - 顶层 `openai` 块当前表示 OpenAI-compatible 请求设置
+- `openai.userAgent` 为可选项；设置时用于统一注入对外 HTTP 请求头中的 `User-Agent`
 - `openai.adapter` 用于选择 adapter 实现
 - 当前支持的 adapter 值为 `openai`、`gpt2api`、`pic2api`
 - provider 级建模应在后续单独引入，而不是直接复用 adapter 选择语义
+
+`openai.userAgent` 规则：
+
+- 配置值可以是完整 UA 字符串
+- 配置值也可以是程序内置关键词，例如 `default` 或 `cherry-studio`
+- 内置关键词解析由程序内置的 UA 列表负责，便于后续独立维护和更新
 
 日志配置说明：
 
@@ -242,7 +248,8 @@ logging:
 ## 长宽比预处理设计
 
 `gpt-image-2` 图像编辑请求只支持固定画布尺寸：`1024x1024`、`1024x1536`、`1536x1024`。
-非标准比例图片可能被模型裁切或改变构图，因此可选的预处理能力应先将原图补边到最接近的支持比例，再发起 API 请求，同时保持原始像素不缩小。
+非标准比例图片可能被模型裁切或改变构图，因此可选的预处理能力应先将原图补边到最接近的支持比例，再发起
+API 请求，同时保持原始像素不缩小。
 
 该功能默认关闭。关闭时，原图路径直接送入 API，并沿用现有 `openai.image.size` 逻辑。
 
@@ -284,8 +291,7 @@ preprocess:
 
 - 支持比例来自 `1024x1024`、`1024x1536`、`1536x1024`
 - 选择与源图比例绝对差最小的支持比例
-- 比例相同时，按更少补边面积，再按稳定顺序
-  `1024x1024`、`1024x1536`、`1536x1024` 决定
+- 比例相同时，按更少补边面积，再按稳定顺序 `1024x1024`、`1024x1536`、`1536x1024` 决定
 - 画布尺寸只放大不缩小，且必须完整包含原图
 - 原图在补边画布中居中，记录精确 source rect 供 crop-back 使用
 
@@ -306,7 +312,8 @@ preprocess:
 存储与查询要求：
 
 - `outputs` 表继续表示最终输出
-- 预处理相关信息应持久化，便于 `inspect` 和未来 Web UI 解释所选尺寸、画布、fill、crop-back 和未裁剪输出位置
+- 预处理相关信息应持久化，便于 `inspect` 和未来 Web UI 解释所选尺寸、画布、fill、crop-back
+  和未裁剪输出位置
 - 预处理错误应写入 attempt 失败信息；非法图像处理错误为不可重试，瞬时文件系统错误可视情况归为可重试
 
 图像库要求：
@@ -385,7 +392,8 @@ preprocess:
 
 ## 未来架构考虑
 
-当前实现默认一个批次只使用一个 provider 和一个活跃 API key 来源。后续大版本可以扩展为专门的账号调度层。
+当前实现默认一个批次只使用一个 provider 和一个活跃 API key
+来源。后续大版本可以扩展为专门的账号调度层。
 
 当前的 run-level cooldown 仅适合单活跃 key 的安全默认行为，不应视为最终调度抽象。
 

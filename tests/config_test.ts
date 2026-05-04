@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "@std/assert";
+import { APP_VERSION } from "../src/shared/app-meta.ts";
 import { loadConfig } from "../src/config/load.ts";
 
 Deno.test("loadConfig loads example config with defaults", async () => {
@@ -6,6 +7,7 @@ Deno.test("loadConfig loads example config with defaults", async () => {
 
   assertEquals(config.configVersion, 2);
   assertEquals(config.openai.model, "gpt-image-2");
+  assertEquals(config.openai.userAgent, undefined);
   assertEquals(config.queue.concurrency, 1);
   assertEquals(config.scan.extensions.includes(".jpg"), true);
   assertEquals(config.openai.image.size, "auto");
@@ -62,6 +64,93 @@ Deno.test("loadConfig accepts pic2api adapter mode", async () => {
   const config = await loadConfig(path);
 
   assertEquals(config.openai.adapter, "pic2api");
+});
+
+Deno.test("loadConfig normalizes explicit userAgent", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  userAgent: '  MyAgent/1.0  '",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.openai.userAgent, "MyAgent/1.0");
+});
+
+Deno.test("loadConfig treats empty userAgent as undefined", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  userAgent: ''",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.openai.userAgent, undefined);
+});
+
+Deno.test("loadConfig resolves builtin default userAgent keyword", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  userAgent: default",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.openai.userAgent, `GPT-Image-Translator/${APP_VERSION}`);
+});
+
+Deno.test("loadConfig resolves builtin cherry-studio userAgent keyword", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  userAgent: cherry-studio",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(
+    config.openai.userAgent,
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) CherryStudio/1.9.4 Chrome/146.0.7680.188 Electron/41.2.1 Safari/537.36",
+  );
 });
 
 Deno.test("loadConfig accepts direct openai apiKey without apiKeyEnv", async () => {

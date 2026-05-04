@@ -131,9 +131,9 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
     try {
       return await this.fetchImpl(`${normalizeBaseUrl(this.config.baseUrl)}/images/edits`, {
         method: "POST",
-        headers: {
+        headers: buildHeaders({
           Authorization: `Bearer ${this.apiKey}`,
-        },
+        }, this.config.userAgent),
         body: form,
         signal: AbortSignal.timeout(this.config.timeoutMs),
       });
@@ -159,10 +159,10 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
     try {
       return await this.fetchImpl(`${normalizeBaseUrl(this.config.baseUrl)}/images/generations`, {
         method: "POST",
-        headers: {
+        headers: buildHeaders({
           Authorization: `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
-        },
+        }, this.config.userAgent),
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(this.config.timeoutMs),
       });
@@ -176,6 +176,7 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
     try {
       response = await this.fetchImpl(url, {
         method: "GET",
+        headers: buildHeaders({}, this.config.userAgent),
         signal: AbortSignal.timeout(this.config.timeoutMs),
       });
     } catch (error) {
@@ -260,6 +261,10 @@ function setFormFieldIfNotAuto(form: FormData, name: string, value: string): voi
 
 function setOptionalFormField(form: FormData, name: string, value: string | undefined): void {
   if (value) form.set(name, value);
+}
+
+function buildHeaders(base: Record<string, string>, userAgent?: string): Record<string, string> {
+  return userAgent ? { ...base, "User-Agent": userAgent } : base;
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {

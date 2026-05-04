@@ -19,6 +19,10 @@ openai:
   # API Key 所在的环境变量名。若未直接填写 apiKey，则会读取这里指定的环境变量。
   apiKeyEnv: OPENAI_API_KEY
 
+  # 可选：请求头中的 User-Agent。可直接写完整 UA。
+  # 如需使用程序默认 UA，可写为 default。
+  # userAgent: default
+
   # 接口适配器。默认 openai；只有对明确不完全兼容 OpenAI 图片编辑接口的站点，
   # 才切换到对应适配器。gpt2api 会启用 /images/generations + reference_images 回退；
   # pic2api 当前仍优先复用 OpenAI 路径，但会对 gpt-image-2 的 size:auto 做显式处理。

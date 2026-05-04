@@ -34,6 +34,7 @@ Deno.test("OpenAIAdapter sends image edit request and parses response", async ()
   const seen: {
     url?: string;
     authorization?: string;
+    userAgent?: string;
     bodyIsFormData?: boolean;
     fields?: string[];
   } = {};
@@ -41,6 +42,7 @@ Deno.test("OpenAIAdapter sends image edit request and parses response", async ()
     const requestInit = init as globalThis.RequestInit | undefined;
     seen.url = String(input);
     seen.authorization = (requestInit?.headers as Record<string, string>)?.Authorization;
+    seen.userAgent = (requestInit?.headers as Record<string, string>)?.["User-Agent"];
     seen.bodyIsFormData = requestInit?.body instanceof FormData;
     if (requestInit?.body instanceof FormData) {
       seen.fields = Array.from(requestInit.body.keys());
@@ -59,6 +61,7 @@ Deno.test("OpenAIAdapter sends image edit request and parses response", async ()
 
   assertEquals(seen.url, "http://example.test/v1/images/edits");
   assertEquals(seen.authorization, "Bearer test-key");
+  assertEquals(seen.userAgent, undefined);
   assertEquals(seen.bodyIsFormData, true);
   assertEquals(seen.fields?.includes("size"), false);
   assertEquals(seen.fields?.includes("quality"), false);
@@ -72,9 +75,16 @@ Deno.test("OpenAIAdapter downloads image when provider returns data[0].url", asy
   const imagePath = await Deno.makeTempFile({ suffix: ".jpg" });
   await Deno.writeFile(imagePath, new Uint8Array([1, 2, 3]));
 
-  const seenUrls: string[] = [];
+  const seen: Array<{ url: string; method?: string; userAgent?: string }> = [];
   const client = new OpenAIAdapter(config, "test-key", async (input, init) => {
-    seenUrls.push(String(input));
+    const requestInit = init as RequestInit | undefined;
+    seen.push({
+      url: String(input),
+      method: requestInit?.method,
+      userAgent: requestInit?.headers instanceof Headers
+        ? requestInit.headers.get("User-Agent") ?? undefined
+        : (requestInit?.headers as Record<string, string> | undefined)?.["User-Agent"],
+    });
     if (String(input).endsWith("/images/edits")) {
       return new Response(
         JSON.stringify({
@@ -93,10 +103,13 @@ Deno.test("OpenAIAdapter downloads image when provider returns data[0].url", asy
 
   const result = await client.editImage({ imagePath, prompt: "translate" });
 
-  assertEquals(seenUrls, [
+  assertEquals(seen.map((entry) => entry.url), [
     "http://example.test/v1/images/edits",
     "http://cdn.example.test/generated.webp",
   ]);
+  assertEquals(seen[0].userAgent, undefined);
+  assertEquals(seen[1].method, "GET");
+  assertEquals(seen[1].userAgent, undefined);
   assertEquals([...result.bytes], [7, 8, 9]);
   assertEquals(result.outputFormat, "webp");
   assertEquals(result.width, 10);
@@ -166,7 +179,9 @@ Deno.test("Gpt2ApiAdapter falls back to reference generations JSON request", asy
   const imagePath = await Deno.makeTempFile({ suffix: ".png" });
   await Deno.writeFile(imagePath, new Uint8Array([1, 2, 3]));
 
-  const seen: Array<{ url: string; method?: string; contentType?: string; body?: string }> = [];
+  const seen: Array<
+    { url: string; method?: string; contentType?: string; body?: string; userAgent?: string }
+  > = [];
   const client = new Gpt2ApiAdapter(
     { ...config, adapter: "gpt2api" },
     "test-key",
@@ -179,6 +194,9 @@ Deno.test("Gpt2ApiAdapter falls back to reference generations JSON request", asy
         contentType: requestInit?.headers instanceof Headers
           ? requestInit.headers.get("Content-Type") ?? undefined
           : (requestInit?.headers as Record<string, string> | undefined)?.["Content-Type"],
+        userAgent: requestInit?.headers instanceof Headers
+          ? requestInit.headers.get("User-Agent") ?? undefined
+          : (requestInit?.headers as Record<string, string> | undefined)?.["User-Agent"],
         body: bodyText,
       });
 
@@ -209,13 +227,44 @@ Deno.test("Gpt2ApiAdapter falls back to reference generations JSON request", asy
   const result = await client.editImage({ imagePath, prompt: "translate", size: "1024x1536" });
 
   assertEquals(seen[0].url, "http://example.test/v1/images/edits");
+  assertEquals(seen[0].userAgent, undefined);
   assertEquals(seen[1].url, "http://example.test/v1/images/generations");
   assertEquals(seen[1].contentType, "application/json");
+  assertEquals(seen[1].userAgent, undefined);
   assertEquals(seen[1].body?.includes("reference_images"), true);
   assertEquals(seen[1].body?.includes("1024x1536"), true);
   assertEquals(seen[2].url, "http://cdn.example.test/generated.png");
   assertEquals([...result.bytes], [4, 5, 6]);
   assertEquals(result.outputFormat, "png");
+});
+
+Deno.test("OpenAIAdapter sends User-Agent when configured", async () => {
+  const imagePath = await Deno.makeTempFile({ suffix: ".jpg" });
+  await Deno.writeFile(imagePath, new Uint8Array([1, 2, 3]));
+
+  const seen: { userAgent?: string } = {};
+  const client = new OpenAIAdapter(
+    { ...config, userAgent: "CherryStudio/Test" },
+    "test-key",
+    async (_input, init) => {
+      const requestInit = init as RequestInit | undefined;
+      seen.userAgent = requestInit?.headers instanceof Headers
+        ? requestInit.headers.get("User-Agent") ?? undefined
+        : (requestInit?.headers as Record<string, string> | undefined)?.["User-Agent"];
+
+      return new Response(
+        JSON.stringify({
+          output_format: "png",
+          data: [{ b64_json: btoa("abc") }],
+        }),
+        { status: 200 },
+      );
+    },
+  );
+
+  await client.editImage({ imagePath, prompt: "translate" });
+
+  assertEquals(seen.userAgent, "CherryStudio/Test");
 });
 
 Deno.test("OpenAIAdapter does not use reference generations fallback", async () => {

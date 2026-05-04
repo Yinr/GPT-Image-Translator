@@ -17,6 +17,7 @@ export interface OpenAIConfig {
   baseUrl: string;
   apiKey?: string;
   apiKeyEnv?: string;
+  userAgent?: string;
   adapter: OpenAIAdapterKind;
   model: string;
   timeoutMs: number;

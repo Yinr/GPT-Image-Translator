@@ -1,6 +1,7 @@
 import { parse } from "@std/yaml";
 import { defaultConfig } from "./defaults.ts";
 import { validateConfig } from "./schema.ts";
+import { resolveUserAgent } from "./user-agent.ts";
 import type { AppConfig } from "../shared/types.ts";
 
 type PlainObject = Record<string, unknown>;
@@ -43,6 +44,7 @@ function normalizeConfig(config: AppConfig): void {
   config.openai.baseUrl = config.openai.baseUrl.replace(/\/+$/, "");
   config.openai.apiKey = config.openai.apiKey?.trim() || undefined;
   config.openai.apiKeyEnv = config.openai.apiKeyEnv?.trim() || undefined;
+  config.openai.userAgent = resolveUserAgent(config.openai.userAgent);
   config.openai.adapter = config.openai.adapter.toLowerCase() as AppConfig["openai"]["adapter"];
   config.openai.image.size = config.openai.image.size
     .toLowerCase() as AppConfig["openai"]["image"]["size"];

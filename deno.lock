@@ -16,6 +16,8 @@
     "jsr:@std/path@1": "1.1.4",
     "jsr:@std/path@1.0": "1.0.9",
     "jsr:@std/path@^1.1.4": "1.1.4",
+    "jsr:@std/semver@*": "1.0.8",
+    "jsr:@std/semver@1": "1.0.8",
     "jsr:@std/yaml@1": "1.0.10"
   },
   "jsr": {
@@ -72,6 +74,9 @@
         "jsr:@std/internal"
       ]
     },
+    "@std/semver@1.0.8": {
+      "integrity": "dc830e8b8b6a380c895d53fbfd1258dc253704ca57bbe1629ac65fd7830179b7"
+    },
     "@std/yaml@1.0.10": {
       "integrity": "245706ea3511cc50c8c6d00339c23ea2ffa27bd2c7ea5445338f8feff31fa58e"
     }
@@ -86,6 +91,7 @@
       "jsr:@std/fmt@1",
       "jsr:@std/fs@*",
       "jsr:@std/path@1",
+      "jsr:@std/semver@1",
       "jsr:@std/yaml@1"
     ]
   }
