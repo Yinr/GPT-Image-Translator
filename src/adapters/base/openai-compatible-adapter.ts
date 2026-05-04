@@ -1,5 +1,4 @@
 import { dirname } from "@std/path";
-import { encodeBase64 } from "@std/encoding/base64";
 import type { ImageEditRequest, ImageEditResult, OpenAIConfig } from "../../shared/types.ts";
 import { ApiError, classifyFetchError, classifyHttpError } from "../../openai/error-classifier.ts";
 import { parseImageEditResponse } from "../../openai/response-parser.ts";
@@ -22,13 +21,20 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
   async editImage(request: ImageEditRequest): Promise<ImageEditResult> {
     const imageBytes = await Deno.readFile(request.imagePath);
     const requestOptions = await this.resolveRequestOptions(request, imageBytes);
-    let response = await this.sendEditsRequest(request, imageBytes, requestOptions);
-    let responseText = await response.text();
-    if (!response.ok && this.shouldFallbackToReferenceGenerations(response.status, responseText)) {
-      response = await this.sendReferenceGenerationRequest(request, imageBytes, requestOptions);
-      responseText = await response.text();
-    }
+    const response = await this.sendEditsRequest(request, imageBytes, requestOptions);
+    return await this.parseResponse(request, response);
+  }
 
+  protected abstract resolveRequestOptions(
+    request: ImageEditRequest,
+    imageBytes: Uint8Array,
+  ): Promise<ResolvedRequestOptions>;
+
+  protected async parseResponse(
+    request: ImageEditRequest,
+    response: Response,
+  ): Promise<ImageEditResult> {
+    const responseText = await response.text();
     if (!response.ok) {
       throw classifyHttpError(response.status, responseText, response.headers);
     }
@@ -73,15 +79,6 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
     });
   }
 
-  protected abstract resolveRequestOptions(
-    request: ImageEditRequest,
-    imageBytes: Uint8Array,
-  ): Promise<ResolvedRequestOptions>;
-
-  protected shouldFallbackToReferenceGenerations(_status: number, _body: string): boolean {
-    return false;
-  }
-
   private async parseSuccessfulResponse(
     request: ImageEditRequest,
     response: Response,
@@ -110,7 +107,7 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
     }
   }
 
-  private async sendEditsRequest(
+  protected async sendEditsRequest(
     request: ImageEditRequest,
     imageBytes: Uint8Array,
     requestOptions: ResolvedRequestOptions,
@@ -135,35 +132,6 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
           Authorization: `Bearer ${this.apiKey}`,
         }, this.config.userAgent),
         body: form,
-        signal: AbortSignal.timeout(this.config.timeoutMs),
-      });
-    } catch (error) {
-      throw classifyFetchError(error);
-    }
-  }
-
-  private async sendReferenceGenerationRequest(
-    request: ImageEditRequest,
-    imageBytes: Uint8Array,
-    requestOptions: ResolvedRequestOptions,
-  ): Promise<Response> {
-    const body = {
-      model: this.config.model,
-      prompt: request.prompt,
-      n: 1,
-      ...(requestOptions.size !== "auto" ? { size: requestOptions.size } : {}),
-      ...(requestOptions.quality ? { quality: requestOptions.quality } : {}),
-      reference_images: [encodeBase64(imageBytes)],
-    };
-
-    try {
-      return await this.fetchImpl(`${normalizeBaseUrl(this.config.baseUrl)}/images/generations`, {
-        method: "POST",
-        headers: buildHeaders({
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        }, this.config.userAgent),
-        body: JSON.stringify(body),
         signal: AbortSignal.timeout(this.config.timeoutMs),
       });
     } catch (error) {
@@ -263,7 +231,10 @@ function setOptionalFormField(form: FormData, name: string, value: string | unde
   if (value) form.set(name, value);
 }
 
-function buildHeaders(base: Record<string, string>, userAgent?: string): Record<string, string> {
+export function buildHeaders(
+  base: Record<string, string>,
+  userAgent?: string,
+): Record<string, string> {
   return userAgent ? { ...base, "User-Agent": userAgent } : base;
 }
 
