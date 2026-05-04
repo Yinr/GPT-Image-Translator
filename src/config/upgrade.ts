@@ -1,5 +1,6 @@
 import { parse, stringify } from "@std/yaml";
 import { CURRENT_CONFIG_VERSION, defaultConfig } from "./defaults.ts";
+import { normalizeConfig } from "./load.ts";
 import { validateConfig } from "./schema.ts";
 import type { AppConfig } from "../shared/types.ts";
 
@@ -196,7 +197,7 @@ function fullUpdateConfig(
   merged.configVersion = CURRENT_CONFIG_VERSION;
   validateConfig(merged);
 
-  const updatedText = stringify(merged);
+  const updatedText = stringify(stripUndefined(merged));
   return {
     changed: updatedText !== text,
     fromVersion,
@@ -211,6 +212,7 @@ function fullUpdateConfig(
 function toAppConfig(parsed: Record<string, unknown>): AppConfig {
   const merged = deepMerge(structuredClone(defaultConfig), parsed) as AppConfig;
   if (!Object.hasOwn(parsed, "configVersion")) merged.configVersion = 0;
+  normalizeConfig(merged);
   return merged;
 }
 
@@ -264,6 +266,17 @@ function deepMerge(base: unknown, override: unknown): unknown {
   }
 
   return base;
+}
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
+  if (!isPlainObject(value)) return value;
+
+  const result: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item !== undefined) result[key] = stripUndefined(item);
+  }
+  return result as T;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

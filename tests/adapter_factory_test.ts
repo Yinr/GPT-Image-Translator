@@ -1,4 +1,4 @@
-import { assertInstanceOf, assertThrows } from "@std/assert";
+import { assertEquals, assertInstanceOf, assertThrows } from "@std/assert";
 import { createImageAdapter } from "../src/adapters/factory.ts";
 import { Gpt2ApiAdapter } from "../src/adapters/gpt2api-adapter.ts";
 import { OpenAIAdapter } from "../src/adapters/openai-adapter.ts";
@@ -8,6 +8,9 @@ import type { OpenAIConfig } from "../src/shared/types.ts";
 const config: OpenAIConfig = {
   baseUrl: "http://example.test/v1",
   apiKeyEnv: "OPENAI_API_KEY",
+  proxy: {
+    url: "",
+  },
   adapter: "openai",
   model: "gpt-image-2",
   timeoutMs: 1000,
@@ -40,5 +43,64 @@ Deno.test("createImageAdapter rejects when no api key source is available", () =
       createImageAdapter({ ...config, apiKey: undefined, apiKeyEnv: undefined }, () => undefined),
     Error,
     "Missing API key: set openai.apiKey or openai.apiKeyEnv",
+  );
+});
+
+Deno.test("createImageAdapter injects configured proxy client into fetch", async () => {
+  const imagePath = await Deno.makeTempFile({ suffix: ".png" });
+  await Deno.writeFile(imagePath, new Uint8Array([1, 2, 3]));
+  const fakeClient = { close: () => {} } as Deno.HttpClient;
+  const seen: { proxyUrl?: string; client?: Deno.HttpClient } = {};
+  const client = createImageAdapter(
+    {
+      ...config,
+      apiKey: "config-key",
+      proxy: { url: "http://user:password@127.0.0.1:7890" },
+    },
+    () => undefined,
+    {
+      createHttpClient: (options) => {
+        seen.proxyUrl = typeof options.proxy === "object" && "url" in options.proxy
+          ? options.proxy.url
+          : undefined;
+        return fakeClient;
+      },
+      fetchImpl: async (_input, init) => {
+        seen.client = (init as RequestInit & { client?: Deno.HttpClient } | undefined)?.client;
+        return new Response(
+          JSON.stringify({
+            output_format: "png",
+            data: [{ b64_json: btoa("abc") }],
+          }),
+          { status: 200 },
+        );
+      },
+    },
+  );
+
+  await client.editImage({ imagePath, prompt: "translate" });
+
+  assertEquals(seen.proxyUrl, "http://user:password@127.0.0.1:7890");
+  assertEquals(seen.client, fakeClient);
+});
+
+Deno.test("createImageAdapter redacts proxy credentials in setup errors", () => {
+  assertThrows(
+    () =>
+      createImageAdapter(
+        {
+          ...config,
+          apiKey: "config-key",
+          proxy: { url: "http://user:password@127.0.0.1:7890" },
+        },
+        () => undefined,
+        {
+          createHttpClient: () => {
+            throw new Error("proxy setup failed");
+          },
+        },
+      ),
+    Error,
+    "Failed to configure proxy http://***:***@127.0.0.1:7890/",
   );
 });

@@ -136,6 +136,7 @@
 - 设计 API-key 级 cooldown、quota health 与 retry routing
 - 设计 provider 级 cooldown 与健康度跟踪
 - 设计 attempt metadata 中的非敏感 key label / logical account id 表达方式
+- 设计 provider/account transport 生命周期，并迁移当前 `openai.proxy` 到 provider 级代理路由
 - 设计从单 provider 多 key 到 provider/account pool 的渐进演化路径
 - 引入单 provider 多 key 轮换
 - 引入 failover 和 balanced usage 策略
@@ -148,6 +149,7 @@
 
 - 评估缺失 `output_format` 时的防御性输出格式探测 fallback
 - 将代理能力进一步扩展到未来 provider 级路由需求
+- 设计显式代理连通性诊断入口，例如 `doctor --check-proxy`，不在普通 translate 中默认探测
 - 仅在当前输出仍存在歧义时，继续增强用户侧摘要、query 输出和诊断可见性
 
 ### 后续路线保留项
@@ -156,6 +158,7 @@
 - 多 key 调度架构与 rollout stage
 - 多 provider account-pool 架构
 - provider 级代理路由与脱敏规则
+- 显式代理连通性诊断入口
 - 自定义尺寸映射与 provider-native 能力暴露
 
 ## 文档维护规则

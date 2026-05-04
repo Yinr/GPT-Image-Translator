@@ -8,6 +8,7 @@ Deno.test("loadConfig loads example config with defaults", async () => {
   assertEquals(config.configVersion, 2);
   assertEquals(config.openai.model, "gpt-image-2");
   assertEquals(config.openai.userAgent, undefined);
+  assertEquals(config.openai.proxy.url, "");
   assertEquals(config.queue.concurrency, 1);
   assertEquals(config.scan.extensions.includes(".jpg"), true);
   assertEquals(config.openai.image.size, "auto");
@@ -150,6 +151,127 @@ Deno.test("loadConfig resolves builtin cherry-studio userAgent keyword", async (
   assertEquals(
     config.openai.userAgent,
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) CherryStudio/1.9.4 Chrome/146.0.7680.188 Electron/41.2.1 Safari/537.36",
+  );
+});
+
+Deno.test("loadConfig normalizes disabled proxy config", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  proxy:",
+      "    url: none",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.openai.proxy.url, "");
+});
+
+Deno.test("loadConfig accepts proxy shorthand none", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  proxy: none",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  const config = await loadConfig(path);
+
+  assertEquals(config.openai.proxy.url, "");
+});
+
+Deno.test("loadConfig accepts supported proxy URLs", async () => {
+  for (
+    const proxyUrl of [
+      "http://127.0.0.1:7890",
+      "https://proxy.example.test:8443",
+      "socks5://127.0.0.1:1080",
+    ]
+  ) {
+    const path = await Deno.makeTempFile({ suffix: ".yaml" });
+    await Deno.writeTextFile(
+      path,
+      [
+        "inputDir: ./input",
+        "outputDir: ./output",
+        "prompt: translate",
+        "openai:",
+        "  baseUrl: https://api.openai.com/v1",
+        "  apiKey: test-key",
+        "  proxy:",
+        `    url: ${proxyUrl}`,
+        "  model: gpt-image-2",
+      ].join("\n"),
+    );
+
+    const config = await loadConfig(path);
+
+    assertEquals(config.openai.proxy.url, proxyUrl);
+  }
+});
+
+Deno.test("loadConfig rejects invalid proxy URL", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  proxy:",
+      "    url: not-a-url",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  await assertRejects(
+    () => loadConfig(path),
+    Error,
+    "openai.proxy.url must be empty, none, or a valid http/https/socks5 URL",
+  );
+});
+
+Deno.test("loadConfig rejects unsupported proxy protocol", async () => {
+  const path = await Deno.makeTempFile({ suffix: ".yaml" });
+  await Deno.writeTextFile(
+    path,
+    [
+      "inputDir: ./input",
+      "outputDir: ./output",
+      "prompt: translate",
+      "openai:",
+      "  baseUrl: https://api.openai.com/v1",
+      "  apiKey: test-key",
+      "  proxy:",
+      "    url: ftp://proxy.example.test",
+      "  model: gpt-image-2",
+    ].join("\n"),
+  );
+
+  await assertRejects(
+    () => loadConfig(path),
+    Error,
+    "openai.proxy.url must be empty, none, or a valid http/https/socks5 URL",
   );
 });
 

@@ -10,6 +10,9 @@ export const defaultConfig: AppConfig = {
   openai: {
     baseUrl: "https://api.openai.com/v1",
     apiKeyEnv: "OPENAI_API_KEY",
+    proxy: {
+      url: "",
+    },
     adapter: "openai",
     model: "gpt-image-2",
     timeoutMs: 600_000,

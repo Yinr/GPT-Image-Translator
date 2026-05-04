@@ -1,5 +1,6 @@
 import { parse } from "@std/yaml";
 import { defaultConfig } from "./defaults.ts";
+import { normalizeProxyConfig } from "./proxy.ts";
 import { validateConfig } from "./schema.ts";
 import { resolveUserAgent } from "./user-agent.ts";
 import type { AppConfig } from "../shared/types.ts";
@@ -35,7 +36,7 @@ function deepMerge(base: unknown, override: unknown): unknown {
   return base;
 }
 
-function normalizeConfig(config: AppConfig): void {
+export function normalizeConfig(config: AppConfig): void {
   config.scan.extensions = config.scan.extensions.map((extension) => {
     const lower = extension.toLowerCase();
     return lower.startsWith(".") ? lower : `.${lower}`;
@@ -45,6 +46,7 @@ function normalizeConfig(config: AppConfig): void {
   config.openai.apiKey = config.openai.apiKey?.trim() || undefined;
   config.openai.apiKeyEnv = config.openai.apiKeyEnv?.trim() || undefined;
   config.openai.userAgent = resolveUserAgent(config.openai.userAgent);
+  config.openai.proxy = normalizeProxyConfig((config.openai as unknown as PlainObject).proxy);
   config.openai.adapter = config.openai.adapter.toLowerCase() as AppConfig["openai"]["adapter"];
   config.openai.image.size = config.openai.image.size
     .toLowerCase() as AppConfig["openai"]["image"]["size"];

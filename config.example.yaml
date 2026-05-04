@@ -23,6 +23,11 @@ openai:
   # 如需使用程序默认 UA，可写为 default。
   # userAgent: default
 
+  # 可选：代理配置。空字符串或 none 表示禁用代理。
+  # 支持 http://、https://、socks5:// URL。若 URL 中包含认证信息，日志中必须脱敏。
+  proxy:
+    url: ""
+
   # 接口适配器。默认 openai；只有对明确不完全兼容 OpenAI 图片编辑接口的站点，
   # 才切换到对应适配器。gpt2api 会启用 /images/generations + reference_images 回退；
   # pic2api 当前仍优先复用 OpenAI 路径，但会对 gpt-image-2 的 size:auto 做显式处理。

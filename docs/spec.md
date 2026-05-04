@@ -179,6 +179,7 @@ logging:
 
 - 顶层 `openai` 块当前表示 OpenAI-compatible 请求设置
 - `openai.userAgent` 为可选项；设置时用于统一注入对外 HTTP 请求头中的 `User-Agent`
+- `openai.proxy.url` 为可选代理 URL；空字符串、`none` 或缺失表示禁用代理
 - `openai.adapter` 用于选择 adapter 实现
 - 当前支持的 adapter 值为 `openai`、`gpt2api`、`pic2api`
 - provider 级建模应在后续单独引入，而不是直接复用 adapter 选择语义
@@ -188,6 +189,14 @@ logging:
 - 配置值可以是完整 UA 字符串
 - 配置值也可以是程序内置关键词，例如 `default` 或 `cherry-studio`
 - 内置关键词解析由程序内置的 UA 列表负责，便于后续独立维护和更新
+
+`openai.proxy.url` 规则：
+
+- 空字符串、`none`、`null` 或缺失表示禁用代理
+- 非空值必须是合法 URL，当前允许 `http:`、`https:`、`socks5:` 协议
+- 显式 YAML 配置是本项目保证的代理入口；`HTTP_PROXY` / `HTTPS_PROXY` 等环境变量不作为保证行为
+- 代理 URL 中的认证信息属于 secret，不得进入日志、错误输出或结构化诊断数据
+- 普通 `translate` 流程不做隐式代理连通性测试；如需测试，应由未来显式诊断命令承载
 
 日志配置说明：
 
@@ -406,14 +415,15 @@ preprocess:
 - 让并发能力随健康 key 数量增长，而不是把所有请求都视为共享一份凭据
 - 为每次 attempt 记录 masked key identity 或 key slot 元数据，便于诊断而不暴露 secret
 - 最终从单 provider key pool 演进到多 provider account pool
-- 支持 provider 级代理配置
+- 支持 provider 级代理配置，并将当前 `openai.proxy` 请求配置迁移到 provider/account transport 层
 
 未来设计约束：
 
 - key/provider 选择应位于独立调度模块，而不是只埋在底层 image client 中
 - secret 永远不能进入日志、CLI 输出或持久化诊断记录
 - provider / adapter 的差异应尽量停留在 queue 调度层之下
-- 代理配置属于 adapter/client 构造层，而不是 job planning 层
+- 当前代理配置属于 adapter/client 构造层，而不是 job planning 层；未来 provider 层稳定后应迁移到
+  provider/account transport 生命周期
 - 多 key 的第一阶段应保持小步演进：单 provider、多 key、确定性轮换
 - 新增用户可见配置字段必须谨慎评估升级和文档成本
 
@@ -424,6 +434,7 @@ preprocess:
 - 未来多 provider 支持中，provider failover 是自动、策略驱动，还是显式配置
 - 未来 provider 代理配置应是全局、provider-specific，还是二者兼有
 - 未来 key balancing 初版是否保持简单 round-robin，还是从一开始就考虑 cooldown、quota 和 rate limit
+- 是否提供显式代理连通性诊断入口，例如 `doctor --check-proxy`，且不在普通 translate 流程中默认探测
 - dry run 开启诊断日志时，是否应写文件，还是只保留 console / memory 诊断
 - prompt 未来是否支持按目录或按文件覆盖
 - cancel / pause 控制是否只留给未来 Web UI

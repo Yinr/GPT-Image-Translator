@@ -1,4 +1,5 @@
 import type { AppConfig } from "../shared/types.ts";
+import { isValidProxyUrl } from "./proxy.ts";
 import {
   OPENAI_IMAGE_BACKGROUNDS,
   OPENAI_IMAGE_OUTPUT_FORMATS,
@@ -26,6 +27,9 @@ export function validateConfig(config: AppConfig): AppConfig {
   if (!config.openai.model.trim()) errors.push("openai.model is required");
   if (!OPENAI_ADAPTERS.includes(config.openai.adapter as OpenAIAdapterKind)) {
     errors.push("openai.adapter is invalid");
+  }
+  if (!isValidProxyUrl(config.openai.proxy.url)) {
+    errors.push("openai.proxy.url must be empty, none, or a valid http/https/socks5 URL");
   }
   if (config.openai.timeoutMs <= 0) errors.push("openai.timeoutMs must be greater than 0");
   if (!config.openai.image) errors.push("openai.image is required");

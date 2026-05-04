@@ -21,10 +21,15 @@ export interface OpenAIConfig {
   apiKey?: string;
   apiKeyEnv?: string;
   userAgent?: string;
+  proxy: OpenAIProxyConfig;
   adapter: OpenAIAdapterKind;
   model: string;
   timeoutMs: number;
   image: OpenAIImageConfig;
+}
+
+export interface OpenAIProxyConfig {
+  url: string;
 }
 
 export type OpenAIAdapterKind = "openai" | "gpt2api" | "pic2api";

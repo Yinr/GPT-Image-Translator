@@ -11,6 +11,9 @@ import type { OpenAIConfig } from "../src/shared/types.ts";
 const config: OpenAIConfig = {
   baseUrl: "http://example.test/v1",
   apiKeyEnv: "OPENAI_API_KEY",
+  proxy: {
+    url: "",
+  },
   adapter: "openai",
   model: "gpt-image-2",
   timeoutMs: 1000,
