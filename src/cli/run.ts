@@ -180,6 +180,8 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       };
     }
 
+    const ownedClient = options.client ? undefined : createImageAdapter(options.config.openai);
+    const client = options.client ?? ownedClient!;
     const summary = await runQueue({
       runId,
       prompt: options.config.prompt,
@@ -190,7 +192,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       outputDir: options.config.outputDir,
       aspectPad: options.config.preprocess.aspectPad,
       retry: options.config.retry,
-      client: options.client ?? createImageAdapter(options.config.openai),
+      client,
       runStore,
       jobStore,
       attemptStore,
@@ -292,6 +294,8 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       },
       stopRequested: options.stopRequested,
       maxSuccess: options.maxSuccess,
+    }).finally(() => {
+      ownedClient?.close?.();
     });
     const counts = jobStore.countByStatus(runId);
     const failedJobs = jobStore.listFailedByRun(runId).map((job) => ({

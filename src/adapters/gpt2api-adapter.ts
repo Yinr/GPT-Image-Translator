@@ -53,15 +53,18 @@ export class Gpt2ApiAdapter extends OpenAICompatibleBaseAdapter {
     };
 
     try {
-      return await this.fetchImpl(`${normalizeBaseUrl(this.config.baseUrl)}/images/generations`, {
-        method: "POST",
-        headers: buildHeaders({
-          Authorization: `Bearer ${this.apiKey}`,
-          "Content-Type": "application/json",
-        }, this.config.userAgent),
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(this.config.timeoutMs),
-      });
+      return await this.transport.fetch(
+        `${normalizeBaseUrl(this.config.baseUrl)}/images/generations`,
+        {
+          method: "POST",
+          headers: buildHeaders({
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+          }, this.config.userAgent),
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.config.timeoutMs),
+        },
+      );
     } catch (error) {
       throw classifyFetchError(error);
     }

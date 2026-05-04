@@ -65,7 +65,7 @@ Deno.test("createImageAdapter injects configured proxy client into fetch", async
           : undefined;
         return fakeClient;
       },
-      fetchImpl: async (_input, init) => {
+      fetch: async (_input, init) => {
         seen.client = (init as RequestInit & { client?: Deno.HttpClient } | undefined)?.client;
         return new Response(
           JSON.stringify({
@@ -79,9 +79,35 @@ Deno.test("createImageAdapter injects configured proxy client into fetch", async
   );
 
   await client.editImage({ imagePath, prompt: "translate" });
+  client.close?.();
 
   assertEquals(seen.proxyUrl, "http://user:password@127.0.0.1:7890");
   assertEquals(seen.client, fakeClient);
+});
+
+Deno.test("createImageAdapter closes configured proxy client", () => {
+  let closed = false;
+  const client = createImageAdapter(
+    {
+      ...config,
+      apiKey: "config-key",
+      proxy: { url: "http://127.0.0.1:7890" },
+    },
+    () => undefined,
+    {
+      createHttpClient: () =>
+        ({
+          close: () => {
+            closed = true;
+          },
+        }) as Deno.HttpClient,
+      fetch: () => Promise.resolve(new Response("{}")),
+    },
+  );
+
+  client.close?.();
+
+  assertEquals(closed, true);
 });
 
 Deno.test("createImageAdapter redacts proxy credentials in setup errors", () => {

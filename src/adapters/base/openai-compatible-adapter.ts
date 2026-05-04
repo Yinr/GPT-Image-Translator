@@ -3,8 +3,8 @@ import type { ImageEditRequest, ImageEditResult, OpenAIConfig } from "../../shar
 import { ApiError, classifyFetchError, classifyHttpError } from "../../openai/error-classifier.ts";
 import { parseImageEditResponse } from "../../openai/response-parser.ts";
 import type { ImageAdapter } from "../image-adapter.ts";
-
-export type FetchLike = typeof fetch;
+import { createHttpTransport } from "../http-transport.ts";
+import type { HttpTransport } from "../http-transport.ts";
 
 export type ResolvedRequestOptions = {
   size: NonNullable<ImageEditRequest["size"]>;
@@ -15,8 +15,12 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
   constructor(
     protected readonly config: OpenAIConfig,
     protected readonly apiKey: string,
-    protected readonly fetchImpl: FetchLike = fetch,
+    protected readonly transport: HttpTransport = createHttpTransport(config),
   ) {}
+
+  close(): void {
+    this.transport.close();
+  }
 
   async editImage(request: ImageEditRequest): Promise<ImageEditResult> {
     const imageBytes = await Deno.readFile(request.imagePath);
@@ -126,7 +130,7 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
     );
 
     try {
-      return await this.fetchImpl(`${normalizeBaseUrl(this.config.baseUrl)}/images/edits`, {
+      return await this.transport.fetch(`${normalizeBaseUrl(this.config.baseUrl)}/images/edits`, {
         method: "POST",
         headers: buildHeaders({
           Authorization: `Bearer ${this.apiKey}`,
@@ -142,7 +146,7 @@ export abstract class OpenAICompatibleBaseAdapter implements ImageAdapter {
   private async downloadImage(url: string): Promise<{ bytes: Uint8Array; outputFormat?: string }> {
     let response: Response;
     try {
-      response = await this.fetchImpl(url, {
+      response = await this.transport.fetch(url, {
         method: "GET",
         headers: buildHeaders({}, this.config.userAgent),
         signal: AbortSignal.timeout(this.config.timeoutMs),
