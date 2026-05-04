@@ -1,72 +1,69 @@
-# Smoke Tests
+# Smoke Test 说明文档
 
-This repository keeps real API smoke-test notes and sample configs under `.local/smoke-test/`. Those
-files are local-only and should not be committed.
+本仓库将真实 API 的 smoke test 资料和示例配置保存在 `.local/smoke-test/`。这些文件仅供本地使用，不应提交。
 
-## Purpose
+## 目的
 
-Use smoke tests to verify that the CLI can send a real image edit request, write the translated
-output, and persist job state.
+smoke test 用于验证 CLI 是否能够：
 
-## Required Environment
+- 发起一次真实图像编辑请求
+- 写出翻译后的输出文件
+- 持久化批次与图片任务状态
 
-- `OPENAI_API_KEY`: API key for the configured OpenAI-compatible service.
-- Network access to the configured `baseUrl`.
+## 所需环境
 
-## Recommended Smoke Command
+- `OPENAI_API_KEY`：当前配置所需的 API key
+- 能访问配置中 `baseUrl` 的网络环境
 
-Run this command from the repository root. The sample config uses repository-relative paths.
+## 推荐命令
+
+请在仓库根目录执行。示例配置使用仓库相对路径。
 
 ```bash
 deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml
 ```
 
-For a controlled sample run, you can also stop after a small number of new successes:
+如需做受控样本执行，也可以限制本次新成功图片任务数量：
 
 ```bash
 deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml --max-success 3
 ```
 
-## Expected Inputs
+## 预期输入
 
-- `.local/smoke-test/037.jpg` or another test image in `.local/smoke-test/`
+- `.local/smoke-test/037.jpg` 或 `.local/smoke-test/` 下的其他测试图片
 - `.local/smoke-test/smoke-cli-config.yaml`
 
-## Expected Outputs
+## 预期输出
 
-- Translated image files under `.local/smoke-test/cli-smoke-output/`
-- SQLite state under `.local/smoke-test/cli-smoke-state/translator.db`
-- Console summary with run id and job counts
+- 翻译后的图片文件：`.local/smoke-test/cli-smoke-output/`
+- SQLite 状态文件：`.local/smoke-test/cli-smoke-state/translator.db`
+- 控制台输出批次 id 与图片任务统计摘要
 
-## Expected Behavior
+## 预期行为
 
-- The request uses `/v1/images/edits`.
-- The response is JSON.
-- The CLI decodes `data[0].b64_json` and writes the output image.
-- With `output.formatFromApi: true`, the output file extension follows response `output_format`.
-- With `output.formatFromApi: false`, the output file extension follows configured
-  `openai.image.outputFormat`.
-- The run can be resumed if the same loaded config hash is used, the previous run is still
-  `running`, and `queue.resume` is enabled. Current input scan results are merged into the existing
-  run.
-- With `--max-success <n>`, the CLI stops scheduling new jobs after `n` newly succeeded images in the
-  current invocation, waits for any in-flight jobs to finish, and leaves the run resumable if work
-  remains.
+- 请求路径使用 `/v1/images/edits`
+- 响应为 JSON
+- CLI 解码 `data[0].b64_json` 并写出输出图片
+- 当 `output.formatFromApi: true` 时，输出扩展名跟随响应 `output_format`
+- 当 `output.formatFromApi: false` 时，输出扩展名跟随配置中的 `openai.image.outputFormat`
+- 当已加载配置对应的 `config hash` 一致、上一批次仍处于 `running`、且 `queue.resume` 为
+  `true` 时，批次可以自动续跑，并将当前扫描结果合并到原批次中
+- 当使用 `--max-success <n>` 时，CLI 会在当前 invocation 中成功完成 `n` 个新图片任务后停止继续调度，等待已在执行中的任务结束，并保持批次可续跑
 
-## Failure Signals
+## 失败信号
 
-- `401` or `403`: credentials or permissions are invalid and the run should stop.
-- `429` or `5xx`: request should be retried according to retry settings.
-- Config validation errors should fail before the API request is sent.
+- `401` 或 `403`：凭据或权限无效，批次应直接停止
+- `429` 或 `5xx`：请求应按重试配置继续重试
+- 配置校验错误：应在发起 API 请求前直接失败
 
-## Cleanup
+## 清理
 
-Remove the smoke output directory and state database when you no longer need them:
+不再需要时，可删除以下目录：
 
 ```text
 .local/smoke-test/cli-smoke-output/
 .local/smoke-test/cli-smoke-state/
 ```
 
-Keep the local API notes in `.local/smoke-test/api-test-notes.md` if they are still useful for
-manual verification.
+如果本地 API 说明仍对人工验证有帮助，可以保留 `.local/smoke-test/api-test-notes.md`。

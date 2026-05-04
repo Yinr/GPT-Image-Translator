@@ -1,1101 +1,167 @@
-# Implementation Plan: GPT Image Translator
+# 任务
 
-## Overview
+## 说明
 
-This project is now past the initial vertical-slice implementation. The current plan tracks two
-things:
+本文件只保留当前仍有价值的任务信息：
 
-- The completed baseline that must stay stable.
-- The next architecture and feature iterations that should be implemented in small, verified slices.
+- 需要长期保持稳定的已完成能力摘要
+- 仍未完成的任务，按优先级分组
+- 后续演进方向
 
-The program remains a Deno CLI first, with queue, storage, OpenAI client, and query logic kept
-reusable for a future Web UI.
+实现过程中的中间切片、临时分支背景和已被当前代码稳定吸收的细节，不在本文件重复展开。
 
-## Architecture Decisions
+## 当前基线
 
-- Use a local SQLite-backed queue rather than only in-memory iteration because real image requests
-  are slow and interruption recovery is required.
-- Keep CLI as a thin adapter over core queue execution so a future Web UI can reuse the same
-  modules.
-- Use `/v1/images/edits` and parse `data[0].b64_json`; do not expect raw binary HTTP responses.
-- Use the API response `output_format` for output file extension.
-- Prefer Deno Standard Library for common functionality: filesystem walking, path handling, CLI
-  parsing, YAML parsing, and base64 decoding.
-- Prefer JSR dependencies. Use npm or URL imports only when no suitable JSR package exists or a
-  concrete compatibility issue requires it.
-- Use `jsr:@db/sqlite` for SQLite storage unless implementation testing reveals a blocker.
-- Keep image API option values centralized so config validation and client behavior cannot drift.
-- Treat image aspect-ratio preprocessing as a separate pipeline stage before the OpenAI client, not
-  as OpenAI client responsibility.
+当前主分支已经具备并应保持稳定的能力：
 
-## Current Baseline
+- Deno CLI 入口与基础开发命令：`check`、`test`、`fmt`、多平台 `compile`
+- YAML 配置加载、校验、默认值合并与显式配置升级
+- 输入目录扫描、输出路径规划、目录结构保留
+- OpenAI-compatible 图像编辑请求与响应解析
+- SQLite 持久化：`runs`、`jobs`、`attempts`、`outputs`、处理元数据
+- 批次执行、重试、续跑、失败查询
+- 终端格式化输出、诊断日志、优雅中断
+- 长宽比补边预处理与可选 crop-back
+- adapter 架构与 `openai` / `gpt2api` / `pic2api` 接入
+- `--max-success` 批次执行上限
+- `@matmen/imagescript` wasm 本地缓存包装
 
-### Completed Phase 1: Foundation
+详细行为定义见：
 
-- [x] Deno project skeleton exists.
-- [x] `deno task check`, `deno task test`, and `deno task fmt` are configured.
-- [x] `src/main.ts` is the program entrypoint.
-- [x] Source directories are split by concern: `cli`, `config`, `core`, `queue`, `openai`,
-      `storage`, `fs`, `shared`, and `services`.
+- `docs/spec.md`
+- `docs/terminology.md`
+- `README.md`
 
-Verification:
+## 高优先级
 
-- `deno task check`
-- `deno task test`
-- `deno task fmt`
+### A1. 收敛共享常量与状态元数据
 
-### Completed Phase 2: Config, Files, and Response Parsing
+目标：收敛重复的状态字符串、配置选项枚举和 CLI / query 展示映射，减少重复定义。
 
-- [x] YAML config loading works with defaults and validation.
-- [x] `config.example.yaml` contains Chinese comments for all current user-facing fields.
-- [x] Scanner recursively finds supported image files in stable order.
-- [x] Output path mapping preserves input directory structure and blocks path escape.
-- [x] Image edit response parser decodes `data[0].b64_json`.
-- [x] Missing `output_format` defaults to `png`.
+完成标准：
 
-Verification:
+- `run` / `job` / `attempt` 状态有单一权威定义
+- 用户可见状态汇总保持现有行为
+- CLI 格式化逻辑不泄漏到 `storage` / `queue` 模块
 
-- `deno test tests/config_test.ts tests/scanner_test.ts tests/path_map_test.ts tests/response_parser_test.ts`
-
-### Completed Phase 3: SQLite Queue
-
-- [x] SQLite migrations initialize idempotently.
-- [x] Runs, jobs, attempts, and outputs are persisted.
-- [x] Jobs can be planned, upserted, queried, and updated.
-- [x] Pending and due retryable jobs are scheduled.
-- [x] Failed jobs are not retried unless future functionality explicitly supports it.
-
-Verification:
-
-- `deno test tests/storage_test.ts tests/scheduler_test.ts`
-
-### Completed Phase 4: OpenAI Client and Retry
-
-- [x] OpenAI-compatible image edit client sends multipart requests to `/v1/images/edits`.
-- [x] Base URL works with or without `/v1`.
-- [x] Request timeout is configurable.
-- [x] API key is read from the configured environment variable and is not printed.
-- [x] Error classifier marks 429 and 5xx as retryable.
-- [x] Error classifier marks 401 and 403 as stop-run errors.
-- [x] Retry policy supports exponential backoff and `Retry-After`.
-
-Verification:
-
-- `deno test tests/openai_client_test.ts tests/error_classifier_test.ts tests/retry_policy_test.ts`
-
-### Completed Phase 5: Runner, CLI, and Query Layer
-
-- [x] Single job runner marks jobs running before API attempts.
-- [x] Successful jobs write output, record metadata, and become `succeeded`.
-- [x] Retryable failures schedule `next_attempt_at`.
-- [x] Non-retryable auth failures can stop the run.
-- [x] Queue runner supports configurable concurrency and minimum delay.
-- [x] CLI supports `translate`, `status`, `inspect`, and `failed` flows.
-- [x] Default no-subcommand behavior remains compatible with `translate`.
-- [x] Query service is separate from CLI so a future Web UI can reuse it.
-- [x] Resume reuses a matching running run and resets stale running jobs.
-
-Verification:
-
-- `deno test tests/job_runner_test.ts tests/queue_runner_test.ts tests/cli_args_test.ts tests/cli_run_test.ts tests/query_commands_test.ts tests/run_query_service_test.ts`
-
-### Completed Follow-up: Image Option Support
-
-- [x] Verify official/compatible `gpt-image-2` supported options for image edit requests.
-- [x] Add validated options to `OpenAIConfig`: `size`, `quality`, `background`, and `outputFormat`.
-- [x] Add Chinese comments and option values to `config.example.yaml`.
-- [x] Document manual smoke-test behavior under `.local/smoke-test/`.
-- [x] Centralize image option values in `src/openai/image-options.ts`.
-
-Implemented behavior notes:
-
-- `size`, `quality`, and `background` accept `auto`.
-- `auto` means the field is omitted from the request payload.
-- `outputFormat` is still sent as `output_format` because it controls output decoding and file
-  naming.
-- The known supported `size` values are fixed API canvas sizes, not arbitrary source-image ratios.
-- `output.formatFromApi` now controls whether the final output path follows the API response format
-  or keeps the planned extension from `openai.image.outputFormat`.
-
-Verification:
-
-- `deno test tests/config_test.ts tests/openai_client_test.ts`
-
-## Next Architecture Maintenance
-
-### Active Branch: Retry, Progress, and Resume UX
-
-Branch: `fix/retry-progress-resume-ux`
-
-Feature specs:
-
-- `docs/specs/retry-progress-resume-ux/requirements.md`
-- `docs/specs/retry-progress-resume-ux/design.md`
-- `docs/specs/retry-progress-resume-ux/tasks.md`
-
-Problem summary:
-
-- Real logs under `logs/` show quota/rate-like retryable errors such as `账号池额度已耗尽`, but the
-  current single-key runner immediately starts the next pending job after scheduling one job for
-  retry.
-- Live progress currently uses start/finish counters against an initial runnable count, which
-  becomes misleading when jobs move back to `retryable`.
-- Terminal output over-emphasizes long absolute paths and normal translate execution prints raw JSON
-  after the summary.
-- Auto-resume behavior is based on the full loaded config hash and a `running` run, but
-  changed-input behavior is not clearly documented.
-- User interruption currently risks exiting immediately while a long image request is in progress;
-  the first interrupt should instead stop after the current attempt.
-
-Planned implementation slices:
-
-- [x] Add graceful interruption: first interrupt drains current in-flight jobs and prevents new
-      jobs; second interrupt can force exit.
-- [x] Reproduce retry storm behavior in tests using fake clients and fake sleep/clock.
-- [x] Add run-level cooldown after retryable failures for the current single API-key model.
-- [x] Surface cooldown events in CLI output and diagnostic logs without exposing secrets.
-- [x] Replace live progress with durable status counts: work, left, retry, and failed.
-- [x] Add CLI-only terminal formatting using Deno standard color utilities and shorten/dim paths.
-      Translate formatting now lives in `src/cli/terminal-format.ts`; path shortening/dimming is
-      implemented for translate output.
-- [x] Replace normal translate raw JSON dump with a formatted summary.
-- [x] Document current resume matching and changed-input behavior.
-- [ ] Evaluate minimal explicit `translate --run <runId>` resume targeting; defer if it requires
-      wider storage/config redesign.
-- [x] Run final verification for this branch slice.
-- [x] Add concise terminal and diagnostic output for aspect-ratio preprocessing.
-- [x] Preserve malformed successful image responses by saving raw response artifacts and support
-      URL/reference_images-compatible providers.
-
-Current branch constraints:
-
-- The run-level cooldown is a pragmatic single-key safety fix, not the intended final scheduler for
-  multi-key or multi-provider operation.
-- Avoid changing the YAML config format unless strictly necessary; config upgrades are costly for
-  existing local configs.
-- Graceful interruption should be a safer default behavior and should not require a new config
-  field.
-- If the temporary feature spec files are later removed from the branch before merge, the durable
-  outcomes and deferred tasks must remain in `docs/spec.md` and `docs/tasks.md`.
-
-Resume notes for this branch:
-
-- Current auto-resume means: same fully loaded config hash plus latest `running` run.
-- Config file path itself is not hashed, but effective values are hashed after defaults/YAML/CLI
-  merge.
-- On resume, stale `running` jobs become `retryable` with `interrupted` metadata.
-- Current scan results are merged into the existing run; new files can be added, missing files are
-  not automatically cancelled, and existing outputs may convert unfinished jobs to `skipped` when
-  `output.skipExisting` applies.
-- Future task-identity matching should not include provider or API-key changes, so rotating keys or
-  switching equivalent provider credentials does not block resuming the same logical translation
-  task.
-- Strict changed-input reconciliation and resume-by-run-id without re-providing config are likely
-  follow-up work unless a small safe implementation emerges.
-
-Verification target:
-
-- [x] `deno test tests/queue_runner_test.ts tests/cli_run_test.ts tests/cli_args_test.ts`
-- [x] `deno task check`
-- [x] `deno task test` (`102 passed | 0 failed`)
-- [x] `deno fmt --check deno.json config.example.yaml docs src tests`
-
-Deferred follow-up tasks that must survive this branch:
-
-- [ ] Design API-key-level cooldown, quota health, and retry routing once multiple API keys are
-      supported.
-- [ ] Design provider-level cooldown/health tracking once multiple providers are supported.
-- [ ] Continue extracting provider-specific request/response behavior into dedicated provider
-      modules so the queue and CLI layers depend only on the shared adapter interface instead of
-      accumulating compatibility branches.
-- [ ] Design provider-level proxy configuration and redaction rules.
-- [ ] Decide whether future multi-key attempt metadata stores a masked key label, a non-secret
-      logical account id, or both.
-- [ ] Add `pic2api`-aware handling for `gpt-image-2 + size:auto` by selecting the nearest provider-
-      documented recommended size while keeping current preprocessing/crop-back behavior.
-- [ ] Evaluate whether provider-specific `402 insufficient balance` responses should stop the run in
-      single-provider/single-key mode.
-- [ ] Design future custom `WxH` input support that maps user-requested sizes to the nearest
-      provider-supported or provider-recommended size.
-- [ ] Design explicit resume-by-run-id without requiring the exact same full config hash.
-- [ ] Design a command/task fingerprint that excludes provider and API credential changes from
-      resume identity while still validating compatible runtime execution settings.
-- [ ] Design input manifest and changed-input reconciliation modes for strict resume behavior.
-
-### Task A1: Normalize Shared Constants and Status Metadata
-
-**Description:** Review repeated status strings, config option lists, and CLI/query display
-mappings. Move constants only when doing so reduces duplication without creating a generic dumping
-ground.
-
-**Acceptance criteria:**
-
-- Job/run status values have a single authoritative type definition.
-- User-facing status summaries still match current CLI output.
-- No CLI-specific formatting leaks into storage or queue modules.
-
-**Verification:**
+验证：
 
 - `deno task check`
 - `deno task test`
 
-**Files likely touched:**
+### A2. 收紧查询服务边界
 
-- `src/shared/types.ts`
-- `src/cli/run.ts`
-- `src/cli/query-commands.ts`
-- `src/services/run-query.ts`
+目标：进一步明确 `RunQueryService` 与底层 SQLite row shape 的边界，确保未来 Web UI 直接依赖稳定 DTO，而不是数据库细节。
 
-**Estimated scope:** Small
+完成标准：
 
-### Task A2: Tighten Query-Service Boundaries
+- Query service 返回稳定 typed DTO
+- CLI query commands 只负责格式化 query 结果
+- Row mapper 仍保持为 storage 内部实现细节
 
-**Description:** Audit `RunQueryService` and storage row mapping to ensure future Web UI callers can
-consume stable DTOs without depending on SQLite row shapes or CLI output formatting.
-
-**Acceptance criteria:**
-
-- Query service returns typed records that are independent from database row names.
-- CLI query commands only format query-service results.
-- Storage row mappers remain internal to storage.
-
-**Verification:**
+验证：
 
 - `deno test tests/run_query_service_test.ts tests/query_commands_test.ts`
 - `deno task check`
 
-**Files likely touched:**
+### A4. 收敛续跑身份与配置命名
 
-- `src/services/run-query.ts`
-- `src/storage/row-mappers.ts`
-- `src/cli/query-commands.ts`
-- `tests/run_query_service_test.ts`
-- `tests/query_commands_test.ts`
+目标：收敛当前续跑匹配规则，为后续显式 resume 和配置命名能力打基础。
 
-**Estimated scope:** Medium
+完成标准：
 
-### Task A3: Document Real Smoke-Test Workflow
+- 明确哪些 `loaded config` 字段属于 `config hash`
+- 定义未来任务指纹 / 续跑身份与 `config hash` 的关系
+- 设计可选 `config.name`
+- 评估显式 `translate --run <runId>` 的最小安全实现边界
 
-**Description:** Convert the ad-hoc smoke-test notes under `.local/smoke-test/` into a stable, safe
-manual workflow document that does not include secrets or generated outputs.
+验证：
 
-**Acceptance criteria:**
+- `docs/spec.md`
+- `docs/tasks.md`
 
-- [x] A documented opt-in smoke command exists.
-- [x] Required environment variables are listed without exposing values.
-- [x] Expected success and failure signals are documented.
-- [x] Generated outputs remain under ignored temporary directories.
+### A5. 增加代理配置
 
-**Verification:**
+目标：为当前 API 接入层增加可选代理配置，并为未来多 provider / 多 key 场景保留扩展空间。
 
-- Documentation review.
-- Optional manual smoke test.
+完成标准：
 
-**Files likely touched:**
+- 请求可通过配置代理发送
+- 代理配置可校验并有文档说明
+- 代理 URL 中的敏感信息不会进入日志与错误输出
+- 测试覆盖代理选项构造，不依赖真实代理服务
 
-- `docs/smoke-tests.md`
-- `.local/smoke-test/api-test-notes.md`
-- `.gitignore` for temporary outputs
-
-**Estimated scope:** Small
-
-### Task A4: Add Success-Limit Stop Control
-
-**Description:** Add an optional execution limit that stops a translate run after a configured
-number of newly successful image jobs, even if more pending/retryable jobs remain. This is useful
-for small validation batches and controlled emergency runs.
-
-Status: completed.
-
-Target behavior:
-
-- Allow a user to request "stop after N newly succeeded images" for a translate invocation.
-- Count only jobs that succeed during the current invocation, not previously skipped or already
-  succeeded jobs from earlier runs.
-- Stop scheduling new jobs once the success limit is reached.
-- Let already running jobs finish if the limit is reached while concurrent jobs are in flight.
-- Keep the run resumable when pending/retryable jobs remain.
-
-Open design questions:
-
-- Should the limit be a CLI-only option such as `--max-success <n>`, a YAML field, or both?
-- Should it count `skipped` outputs as completed for dry validation workflows, or strictly count
-  only fresh `succeeded` jobs?
-- How should this interact with future multi-key concurrency and graceful interruption summaries?
-
-Acceptance criteria:
-
-- [x] Success limit can stop a run without marking remaining work as failed.
-- [x] Summary clearly says the run stopped because the success limit was reached.
-- [x] Existing resume behavior can continue remaining jobs later.
-- [x] Tests cover sequential and concurrent cases.
-
-Verification:
-
-- `deno test tests/queue_runner_test.ts tests/cli_run_test.ts tests/cli_args_test.ts`
-- `deno task check`
-
-**Estimated scope:** Medium
-
-### Task A5: Add Provider Proxy Configuration
-
-**Description:** Add optional proxy configuration for provider/API clients so users can route
-requests through a proxy when required by their network environment. This should be designed with
-future multi-provider support in mind.
-
-Status: planned, not part of `fix/retry-progress-resume-ux`.
-
-Target behavior:
-
-- Support configuring a proxy for the current OpenAI-compatible provider/client.
-- Leave room for provider-specific proxy settings when multiple providers are supported.
-- Avoid logging proxy credentials or full proxy URLs if they contain secrets.
-- Keep proxy handling below the queue layer; job planning and scheduling should not know transport
-  proxy details.
-
-Open design questions:
-
-- Should the first version support only environment variables such as `HTTP_PROXY` / `HTTPS_PROXY`,
-  explicit YAML fields, or both?
-- Should proxy config be global, provider-specific, or resolved by provider with a global fallback?
-- Which Deno HTTP client/proxy mechanism is appropriate and stable on Windows?
-
-Acceptance criteria:
-
-- [ ] Requests can be sent through a configured proxy.
-- [ ] Proxy config is validated and documented.
-- [ ] Secrets in proxy URLs are redacted from logs and errors.
-- [ ] Tests cover proxy option construction without requiring a real proxy service.
-
-Verification:
+验证：
 
 - `deno test tests/openai_client_test.ts tests/config_test.ts`
 - `deno task check`
 
-**Estimated scope:** Medium
+### A6. 继续收口适配器边界
 
-## Future Feature Roadmap
+目标：继续把 adapter 特有的请求/响应兼容逻辑从 `queue`、CLI 和共享 helper 中收敛到
+`src/adapters/` 边界内。
 
-### Task F1: Aspect-Ratio Preprocessing Design
+完成标准：
 
-**Description:** Design a preprocessing stage that pads input images to the nearest supported
-`gpt-image-2` canvas ratio without shrinking original pixels. This stage should run before the
-OpenAI client and produce a prepared image path plus the chosen API `size`.
+- `queue` 和 CLI 只依赖共享 adapter 接口
+- provider / adapter 差异不再继续泄漏到调度层
+- 新增兼容分支优先落在对应 adapter 内部
 
-Status: designed in `docs/spec.md` under "Aspect-Ratio Preprocessing Design".
+验证：
 
-Target behavior:
-
-- Read the original image dimensions.
-- Select the best supported API canvas by aspect-ratio match.
-- Keep the original image centered.
-- Expand the canvas to the selected ratio without compressing original pixels.
-- Fill expanded areas with transparent or white background based on config.
-- Send the preprocessed image to `/v1/images/edits`.
-- Set request `size` to the selected supported canvas size.
-
-**Acceptance criteria:**
-
-- [x] Design documents where preprocessing sits in the queue/job-runner flow.
-- [x] Config shape is specified but not necessarily implemented.
-- [x] Storage implications are identified for original, preprocessed, uncropped API output, and
-      final output paths.
-- [x] Image library selection criteria are defined, with final dependency choice deferred to
-      implementation after Windows/Deno compatibility checks.
-
-**Verification:**
-
-- `docs/spec.md` updated with the agreed design.
-- `docs/tasks.md` updated if task boundaries change.
-
-**Files likely touched:**
-
-- `docs/spec.md`
-- `docs/tasks.md`
-- Possibly an ADR under `docs/adr/`
-
-**Estimated scope:** Medium
-
-### Task F2: Add Aspect-Ratio Preprocessing Config
-
-**Description:** Add configuration for optional aspect-ratio preprocessing and optional crop-back
-behavior.
-
-Status: implemented.
-
-Proposed YAML shape:
-
-```yaml
-preprocess:
-  aspectPad:
-    enabled: false
-    fill: transparent # transparent / white
-    cropBackToOriginal: false
-    intermediateDir: .intermediate
-```
-
-Config behavior:
-
-- `enabled: false` preserves current behavior.
-- `fill: transparent` uses transparent padding when output format and image processing support it.
-- `fill: white` uses opaque white padding.
-- `cropBackToOriginal: true` crops returned API output back to the original pixel rectangle.
-- `intermediateDir` is inside `outputDir` and stores pre-crop API outputs when crop-back is enabled.
-
-**Acceptance criteria:**
-
-- [x] Defaults preserve current behavior.
-- [x] Config validation rejects unknown fill modes and unsafe intermediate paths.
-- [x] `config.example.yaml` documents the feature in Chinese.
-- [x] Config upgrade bumps to `configVersion: 2` and appends `preprocess.aspectPad` for old configs.
-
-**Verification:**
-
-- `deno test tests/config_test.ts`
-- `deno test tests/config_upgrade_test.ts tests/openai_client_test.ts`
-- `deno task check`
-
-**Files likely touched:**
-
-- `config.example.yaml`
-- `src/config/defaults.ts`
-- `src/config/load.ts`
-- `src/config/schema.ts`
-- `src/shared/types.ts`
-- `tests/config_test.ts`
-
-**Estimated scope:** Medium
-
-### Task F3: Implement Aspect-Ratio Planner
-
-**Description:** Implement pure functions that choose the best supported API canvas size and compute
-padding/crop rectangles from source dimensions.
-
-Status: implemented.
-
-Rules:
-
-- Do not shrink the original image pixels.
-- Scale the selected API canvas ratio up to contain the original dimensions.
-- Center the original image in the expanded canvas.
-- Store the original image rectangle for optional crop-back after API output.
-
-**Acceptance criteria:**
-
-- [x] Square, portrait, landscape, and extreme aspect-ratio inputs choose deterministic sizes.
-- [x] Computed canvas dimensions always contain the original dimensions.
-- [x] Crop rectangle corresponds to the original image position within the padded canvas.
-- [x] No filesystem or image library dependency is required for the planner tests.
-
-**Verification:**
-
-- `deno test tests/aspect_ratio_planner_test.ts`
-- `deno task check`
-
-**Files likely touched:**
-
-- `src/core/aspect-ratio-planner.ts`
-- `tests/aspect_ratio_planner_test.ts`
-
-**Estimated scope:** Medium
-
-### Task F4: Implement Image Padding and Crop Processing
-
-**Description:** Add an image processing adapter that can create padded input images and optionally
-crop API outputs back to the original rectangle.
-
-Status: implemented with `jsr:@matmen/imagescript@1.3.1`.
-
-Processing flow:
-
-- Read original dimensions.
-- Create a padded canvas using the planner result.
-- Write a temporary/preprocessed input image for the API call.
-- Preserve the API's uncropped output when crop-back is enabled.
-- Crop the API output back to the original rectangle when configured.
-- Write the final output to the normal output path.
-
-**Acceptance criteria:**
-
-- [x] Original pixels are not downscaled during preprocessing.
-- [x] Padded image dimensions match the planner output.
-- [x] Fill mode supports transparent and white padding.
-- [x] Crop-back produces only a crop, not a resize.
-- [x] Uncropped API output is retained under the configured intermediate directory when crop-back is
-      enabled through the queue/job-runner output wiring implemented in F5.
-- [x] Temporary files are cleaned up when safe, while durable intermediate outputs are preserved.
-
-**Verification:**
-
-- Unit tests using generated small images.
-- `deno test tests/image_preprocessor_test.ts`
 - `deno task check`
 - `deno task test`
 
-**Files likely touched:**
-
-- `src/core/image-preprocessor.ts`
-- `src/fs/output-path.ts`
-- `src/queue/job-runner.ts`
-- `src/storage/output-store.ts`
-- `tests/image_preprocessor_test.ts`
-- `tests/job_runner_test.ts`
-
-**Estimated scope:** Large
-
-### Task F5: Integrate Preprocessing with Queue Execution
-
-**Description:** Wire aspect-ratio preprocessing into job execution while preserving current
-behavior when disabled.
-
-Status: implemented.
-
-**Acceptance criteria:**
-
-- [x] Disabled preprocessing leaves existing request and output behavior unchanged.
-- [x] Enabled preprocessing sends the padded image path to the OpenAI client.
-- [x] Enabled preprocessing sets request `size` to the planner-selected API size.
-- [x] Crop-back mode writes the final cropped output to the normal output path.
-- [x] Crop-back mode also preserves the uncropped API output in the intermediate directory.
-- [x] Attempts and processing metadata clearly identify final output and any preserved intermediate
-      output through the query/storage visibility changes implemented in F6.
-
-**Verification:**
-
-- `deno test tests/job_runner_test.ts tests/queue_runner_test.ts`
-- `deno task test`
-- Optional manual smoke test on one portrait, one landscape, and one square image.
-
-**Files likely touched:**
-
-- `src/queue/job-runner.ts`
-- `src/openai/client.ts`
-- `src/shared/types.ts`
-- `src/storage/output-store.ts`
-- `tests/job_runner_test.ts`
-- `tests/queue_runner_test.ts`
-
-**Estimated scope:** Large
-
-### Task F6: Expose Operational Controls for Preprocessing
-
-**Description:** Add CLI/query visibility for preprocessing decisions so users can diagnose why a
-given output used a particular canvas size or crop behavior.
-
-Status: implemented.
-
-**Acceptance criteria:**
-
-- [x] Job inspection shows whether preprocessing was enabled.
-- [x] Job inspection shows selected API size and crop-back status when available.
-- [x] Failed preprocessing errors are clear and non-retryable unless caused by transient filesystem
-      issues.
-
-**Verification:**
-
-- `deno test tests/query_commands_test.ts tests/run_query_service_test.ts`
-- `deno test tests/storage_test.ts tests/job_runner_test.ts`
-- Manual CLI inspection of a preprocessed run.
-
-**Files likely touched:**
-
-- `src/services/run-query.ts`
-- `src/cli/query-commands.ts`
-- `src/storage/migrations.ts`
-- `tests/query_commands_test.ts`
-- `tests/run_query_service_test.ts`
-
-**Estimated scope:** Medium
-
-### Task F7: Add Defensive Output-Format Detection Fallback
-
-**Description:** Evaluate whether the project can integrate
-[`google/magika`](https://github.com/google/magika) or an equivalent content-based format detector
-as a defensive fallback when the image API response does not provide a usable `output_format`. This
-is intentionally low priority because the normal path should continue to trust the API response
-first, and this fallback should only run when `output_format` is missing or invalid.
-
-Target behavior:
-
-- Keep `output_format` from the API response as the primary source of truth.
-- Only attempt fallback detection when `output_format` is absent, empty, or unsupported.
-- Detect format from decoded response bytes rather than from file extension.
-- Restrict accepted fallback results to the output formats the project can safely write and name.
-- Preserve current behavior when detection is unavailable, inconclusive, or too costly to enable by
-  default.
-
-**Acceptance criteria:**
-
-- The feasibility of using `Magika` from Deno on Windows is documented.
-- The fallback activation rules are specified so normal successful responses do not change behavior.
-- The design identifies how detected format maps to output extension and persisted output metadata.
-- Failure behavior is specified for unknown or ambiguous detection results.
-- If implementation proceeds, tests cover missing `output_format` with a correctly detected format.
-
-**Verification:**
-
-- `docs/spec.md` or a related design note records the decision.
-- If implemented later: `deno test tests/response_parser_test.ts tests/job_runner_test.ts`
-
-**Files likely touched:**
-
-- `docs/tasks.md`
-- `docs/spec.md`
-- `src/openai/response-parser.ts`
-- `src/queue/job-runner.ts`
-- `src/fs/output-path.ts`
-- `src/storage/output-store.ts`
-- `tests/response_parser_test.ts`
-- `tests/job_runner_test.ts`
-
-**Estimated scope:** Medium
-
-### Task F8: Design Multi-Key and Provider-Pool Scheduling Module
-
-**Description:** Design a later-phase scheduling module that can manage multiple API keys and, in a
-future expansion, multiple providers. This should be treated as a major-version feature rather than
-an incremental patch because it affects configuration, runtime selection, retry behavior,
-parallelism, observability, and failure handling.
-
-Design goals:
-
-- Keep the first implementation step small: support multiple API keys for one provider.
-- Treat key selection as a separate scheduling concern rather than burying it inside the OpenAI
-  client.
-- Allow future expansion from a single-provider key pool to a multi-provider account pool.
-- Persist enough runtime state to understand which key/provider handled which job.
-- Avoid leaking secrets in logs, query output, or persisted diagnostic metadata.
-
-**Acceptance criteria:**
-
-- The design defines a dedicated scheduler/module boundary for account/key selection.
-- The design breaks implementation into small stages with backward-compatible entry points.
-- Config shape is proposed for single-provider multi-key support and future multi-provider support.
-- Scheduling strategy tradeoffs are documented before implementation starts.
-
-**Verification:**
-
-- `docs/spec.md` updated with the agreed architecture.
-- `docs/tasks.md` updated if stage boundaries change.
-
-**Files likely touched:**
-
-- `docs/spec.md`
-- `docs/tasks.md`
-- Possibly an ADR under `docs/adr/`
-
-**Estimated scope:** Large
-
-### Task F9: Add Single-Provider Multi-Key Rotation
-
-**Description:** Add the first minimal version of multi-key support for one provider. The initial
-goal is to let one configured provider hold multiple API keys and rotate between them for requests.
-
-Initial target behavior:
-
-- Support multiple API keys for the same provider in config.
-- Default to simple round-robin or stable rotation across available keys.
-- Keep single-key config working without migration pressure.
-- Record which logical key handled each attempt, using masked or non-secret identifiers only.
-
-**Acceptance criteria:**
-
-- A provider can be configured with more than one API key.
-- Request execution can select the next usable key without changing existing single-key behavior.
-- Attempt metadata can show which key slot or key label was used without storing raw secrets.
-- Unit tests cover deterministic rotation behavior.
-
-**Verification:**
-
-- `deno test tests/openai_client_test.ts tests/job_runner_test.ts tests/storage_test.ts`
-- `deno task check`
-
-**Files likely touched:**
-
-- `src/shared/types.ts`
-- `src/config/schema.ts`
-- `src/openai/client.ts`
-- `src/queue/job-runner.ts`
-- `src/storage/migrations.ts`
-- `tests/openai_client_test.ts`
-- `tests/job_runner_test.ts`
-- `tests/storage_test.ts`
-
-**Estimated scope:** Medium
-
-### Task F10: Add Key Failover and Usage-Balancing Strategies
-
-**Description:** Expand single-provider multi-key support with selectable scheduling strategies.
-Expected early strategies are:
-
-- Prefer one key until it fails, then switch to the next available key.
-- Distribute traffic as evenly as possible across all healthy keys.
-
-Behavior notes:
-
-- Retryable and non-retryable failures may need different key-health effects.
-- Temporary rate-limit failures should not immediately mark a key permanently unusable.
-- Strategy selection should be explicit in config rather than hidden in heuristics.
-
-**Acceptance criteria:**
-
-- At least two strategies are supported: primary-with-failover and balanced rotation.
-- Key-health state is tracked well enough to avoid obviously bad repeated selection.
-- Scheduler behavior remains deterministic enough for tests.
-- CLI/query inspection can show enough metadata to diagnose why a key was chosen or skipped.
-
-**Verification:**
-
-- `deno test tests/job_runner_test.ts tests/queue_runner_test.ts tests/query_commands_test.ts`
-- `deno task check`
-
-**Files likely touched:**
-
-- `src/queue/`
-- `src/services/run-query.ts`
-- `src/cli/query-commands.ts`
-- `src/storage/`
-- `tests/job_runner_test.ts`
-- `tests/queue_runner_test.ts`
-- `tests/query_commands_test.ts`
-
-**Estimated scope:** Large
-
-### Task F11: Enable Concurrency Scheduling by Key Capacity
-
-**Description:** Allow runtime parallelism to scale with available healthy keys so the queue can
-make safe concurrent requests without overloading a single key.
-
-Target behavior:
-
-- Concurrency can be capped globally and additionally constrained by key availability.
-- A single healthy key may still force effectively serialized execution.
-- Multiple healthy keys can unlock controlled parallelism.
-- Scheduling should avoid giving multiple simultaneous jobs to a key that is currently cooling down
-  from rate limits when alternatives exist.
-
-**Acceptance criteria:**
-
-- The scheduler can limit active jobs based on key availability.
-- Parallel execution remains compatible with retry and resume behavior.
-- Rate-limited keys can temporarily reduce usable scheduling capacity.
-- Tests cover one-key and multi-key concurrency behavior.
-
-**Verification:**
-
-- `deno test tests/queue_runner_test.ts tests/job_runner_test.ts`
-- `deno task test`
-
-**Files likely touched:**
-
-- `src/queue/queue-runner.ts`
-- `src/queue/job-runner.ts`
-- `src/openai/`
-- `tests/queue_runner_test.ts`
-- `tests/job_runner_test.ts`
-
-**Estimated scope:** Large
-
-### Task F12: Expand to Multi-Provider Account Pools
-
-**Description:** Generalize the key scheduler into a provider/account pool that can manage multiple
-providers, multiple API keys per provider, per-provider capability differences, and ongoing health
-tracking for intelligent request routing.
-
-Longer-term target behavior:
-
-- Support multiple providers in one config.
-- Support multiple API keys under each provider.
-- Track provider/key health and recent failures.
-- Route jobs to an appropriate provider/key based on health, capability, and scheduling policy.
-- Keep provider-specific request differences out of high-level queue code as much as possible.
-
-**Acceptance criteria:**
-
-- Config can describe a provider pool without breaking the simple single-provider path.
-- Health tracking distinguishes provider-level failures from key-level failures.
-- The scheduling module can choose among providers and keys using explicit policy.
-- Query/inspection output can explain which provider/key handled each attempt.
-
-**Verification:**
-
-- `docs/spec.md` updated with provider-pool design.
-- `deno task check`
-- `deno task test`
-
-**Files likely touched:**
-
-- `src/config/`
-- `src/openai/` or a future `src/providers/`
-- `src/queue/`
-- `src/services/run-query.ts`
-- `src/storage/`
-- `tests/`
-- `docs/spec.md`
-
-**Estimated scope:** Very Large
-
-### Task F13: Design Local Logging Module and Config
-
-**Description:** Design a dedicated local logging module for CLI diagnostics. This should be treated
-as a standalone module rather than relying on `@std/log`, because Deno marks `@std/log` as no longer
-recommended and likely removable in the future.
-
-Status: implemented.
-
-Design goals:
-
-- Keep user-facing progress output separate from diagnostic log persistence.
-- Support explicit log levels without forcing verbose output by default.
-- Support optional file logging to a configurable directory.
-- Preserve current behavior when logging is disabled.
-
-Proposed YAML shape:
-
-```yaml
-logging:
-  enabled: false
-  level: info # debug / info / warn / error
-  dir: ./logs
-```
-
-**Acceptance criteria:**
-
-- [x] Logging config shape is specified in spec and task docs.
-- [x] The module boundary is defined so queue/core code can emit logs without owning CLI formatting.
-- [x] The design explicitly rejects `@std/log` as the new default foundation.
-- [x] Secret-handling rules for logs are documented.
-
-**Verification:**
-
-- `docs/spec.md` updated with agreed logging direction.
-- `docs/tasks.md` updated if logging scope changes.
-
-**Files likely touched:**
-
-- `docs/spec.md`
-- `docs/tasks.md`
-- Possibly an ADR under `docs/adr/`
-
-**Estimated scope:** Medium
-
-### Task F14: Add Logging Config Validation and Defaults
-
-**Description:** Extend configuration types, defaults, and validation to support an opt-in logging
-section.
-
-Status: implemented.
-
-Target behavior:
-
-- Logging is disabled by default.
-- Default log directory is `./logs`.
-- Supported levels are constrained to a small explicit set.
-- Invalid or unsafe logging configuration is rejected early.
-
-**Acceptance criteria:**
-
-- [x] Config types include a logging section.
-- [x] Defaults preserve current non-logging behavior.
-- [x] Validation rejects unknown levels and empty log directory values.
-- [x] `config.example.yaml` documents the feature in Chinese.
-
-**Verification:**
-
-- `deno test tests/config_test.ts`
-- `deno task check`
-
-**Files likely touched:**
-
-- `src/shared/types.ts`
-- `src/config/defaults.ts`
-- `src/config/load.ts`
-- `src/config/schema.ts`
-- `config.example.yaml`
-- `tests/config_test.ts`
-
-**Estimated scope:** Small
-
-### Task F15: Implement Lightweight Logger Module
-
-**Description:** Build a small internal logger module with level filtering and optional file output.
-
-Status: implemented.
-
-Initial target behavior:
-
-- Support `debug`, `info`, `warn`, and `error` levels.
-- Support a no-op logger when disabled.
-- Support console logging and optional file logging through a stable interface.
-- Create the log directory lazily when file logging is enabled.
-
-**Acceptance criteria:**
-
-- [x] The logger module has a narrow, reusable interface.
-- [x] Disabled logging avoids creating files or directories.
-- [x] File logging works on Windows and writes deterministic text output.
-- [x] Logger tests cover level filtering and disabled behavior.
-
-**Verification:**
-
-- `deno test tests/logger_test.ts`
-- `deno task check`
-
-**Files likely touched:**
-
-- `src/logging/`
-- `tests/logger_test.ts`
-
-**Estimated scope:** Medium
-
-### Task F16: Integrate Diagnostic Logging into CLI Execution
-
-**Description:** Wire the logger module into CLI execution, queue execution, and key operational
-events while preserving readable user-facing progress output.
-
-Status: implemented.
-
-Target behavior:
-
-- Existing progress output remains available to the user.
-- Diagnostic logs can additionally record run start/end, job start/end, retries, and failures.
-- Logging can be turned on without changing core execution outcomes.
-- Logging level controls which diagnostic records are persisted.
-
-**Acceptance criteria:**
-
-- [x] CLI execution can create and pass a logger instance through the runtime flow.
-- [x] Logging remains optional and does not break existing tests when disabled.
-- [x] Run/job lifecycle events emit diagnostic logs through the new module.
-- [x] Secret values are not included in emitted log lines.
-
-**Verification:**
-
-- `deno test tests/cli_run_test.ts tests/job_runner_test.ts tests/queue_runner_test.ts`
-- `deno task test`
-
-**Files likely touched:**
-
-- `src/main.ts`
-- `src/cli/run.ts`
-- `src/queue/`
-- `src/openai/`
-- `tests/cli_run_test.ts`
-- `tests/job_runner_test.ts`
-- `tests/queue_runner_test.ts`
-
-**Estimated scope:** Medium
-
-### Task F17: Define Log File Strategy and Operational Behavior
-
-**Description:** Decide how log files should be organized for real usage and whether they should be
-per-run, shared, or rotated.
-
-Status: implemented.
-
-Questions this task should settle:
-
-- Should logs be written to one file per run, one shared file, or a simple rolling scheme?
-- Should dry-run logging create files when enabled?
-- Should query commands eventually expose log file locations or recent logging metadata?
-
-**Acceptance criteria:**
-
-- [x] File naming and retention behavior are documented.
-- [x] Operational tradeoffs are documented for Windows/local CLI usage.
-- [x] The decision does not require immediate implementation of complex rotation.
-
-**Verification:**
-
-- Documentation review.
-
-**Files likely touched:**
-
-- `docs/spec.md`
-- `docs/tasks.md`
-- Possibly `docs/adr/`
-
-**Estimated scope:** Small
-
-### Task F18: Add Versioned Config Upgrade Framework
-
-**Description:** Add a dedicated config upgrade module that can safely update older YAML config
-files without losing comments by default. Missing `configVersion` should be treated as version `0`,
-which represents configs created before versioning existed.
-
-Status: implemented.
-
-Target behavior:
-
-- Add `configVersion` to the config model and example config.
-- Expose `config upgrade --config <path>` as an explicit command.
-- Validate the existing config before writing upgrade changes.
-- Default upgrade mode preserves comments by applying versioned text migrations.
-- Version `0 -> 1` inserts `configVersion` near the beginning and appends missing top-level blocks
-  such as `logging` at the end.
-- Normal runtime reads warn about outdated config versions but do not rewrite files.
-
-Full-update behavior:
-
-- `--full-update` rewrites the full config into the latest complete shape.
-- `--full-update` can drop comments and formatting.
-- `--allow-drop-comments` is required before full-update may rewrite a file containing comments.
-
-**Acceptance criteria:**
-
-- [x] Config upgrade logic lives in a dedicated module.
-- [x] Migrations are represented as versioned steps rather than ad-hoc text variables alone.
-- [x] `configVersion` missing is treated as version `0`.
-- [x] Safe mode preserves existing comments and content outside migrated insertions.
-- [x] Full-update behavior is explicit and guarded.
-- [x] Tests cover version `0`, missing version, full-update safety, validation before write, and
-      dry-run.
-
-**Verification:**
-
-- `deno test tests/config_upgrade_test.ts tests/cli_args_test.ts`
-- `deno task test`
-
-**Files likely touched:**
-
-- `src/config/upgrade.ts`
-- `src/config/defaults.ts`
-- `src/config/load.ts`
-- `src/config/schema.ts`
-- `src/shared/types.ts`
-- `src/cli/args.ts`
-- `src/main.ts`
-- `config.example.yaml`
-- `tests/config_upgrade_test.ts`
-- `tests/cli_args_test.ts`
-
-**Estimated scope:** Medium
-
-## Open Planning Questions
-
-- Should `gpt-image-2-2k` and `gpt-image-2-4k` be exposed as model presets or remain plain model
-  strings?
-- If `output_format` is missing, should fallback detection silently infer the extension, warn in
-  logs/query output, or require opt-in configuration?
-- Should multi-key scheduling metadata live in attempts, a separate account-health table, or both?
-- For multi-provider support, should provider failover be automatic or require explicit routing
-  policy?
-- Should key balancing be purely round-robin, weighted, cooldown-aware, or usage-quota-aware?
-- Should dry-run mode write diagnostic log files when logging is enabled, or only emit in-memory /
-  console diagnostics?
-- Should prompt support per-directory or per-file overrides later?
-- Are cancellation and pause controls needed in the first CLI release or only for the future Web UI?
-
-## Risks and Mitigations
-
-| Risk                                                   | Impact | Mitigation                                                     |
-| ------------------------------------------------------ | ------ | -------------------------------------------------------------- |
-| Image requests take several minutes                    | High   | Long timeout, durable queue, resume support                    |
-| API key leaks in logs                                  | High   | Read from env and mask secret values                           |
-| 429 or transient failures interrupt batches            | High   | Retry policy with `Retry-After` and SQLite attempts            |
-| Output extension mismatch                              | Medium | Use `output_format` from response                              |
-| Logging writes secrets or noisy internal details       | High   | Separate progress from diagnostics and redact sensitive values |
-| Future Web UI needs different control flow             | Medium | Keep queue/core independent from CLI                           |
-| Fixed API canvas sizes crop or alter unusual ratios    | Medium | Optional aspect-ratio preprocessing and crop-back workflow     |
-| Cropped output hides useful uncropped API result       | Medium | Preserve uncropped API output in an intermediate output folder |
-| Image processing dependencies behave poorly on Windows | Medium | Choose a Deno/Windows-compatible library and test early        |
+## 中优先级
+
+### 配置与续跑身份
+
+- 增加可选 `config.name`，用于配置检索、列出与操作员记忆
+- 梳理 `config hash` 的纳入字段
+- 设计可容忍兼容 provider / adapter / API key 变化的任务指纹 / 续跑身份
+- 设计不依赖完整 `config hash` 的显式 resume-by-run-id
+- 设计更严格的输入清单与 changed-input reconciliation 机制
+- 明确是否允许仅依赖持久化 run metadata 实现无配置路径的续跑定位
+
+### 适配器与 API 演进
+
+- 继续提取 adapter-specific 请求/响应行为，保持 queue / CLI 只依赖共享 adapter 接口
+- 为 `pic2api + gpt-image-2 + size:auto` 增加最近推荐尺寸映射
+- 评估 `402 insufficient balance` 在单 provider / 单 key 模式下的 stop-run 语义
+- 设计自定义 `WxH` 输入映射到支持尺寸 / 推荐尺寸的方案
+- 评估额外 provider-native 图像流程是否值得通过 adapter capability 暴露
+
+### 多 key / 多 provider 调度
+
+- 设计 API-key 级 cooldown、quota health 与 retry routing
+- 设计 provider 级 cooldown 与健康度跟踪
+- 设计 attempt metadata 中的非敏感 key label / logical account id 表达方式
+- 设计从单 provider 多 key 到 provider/account pool 的渐进演化路径
+- 引入单 provider 多 key 轮换
+- 引入 failover 和 balanced usage 策略
+- 让并发能力按健康 key 容量扩展
+- 在单 provider 多 key 稳定后，再扩展到多 provider account pool
+
+## 低优先级
+
+### 防御性与运维增强
+
+- 评估缺失 `output_format` 时的防御性输出格式探测 fallback
+- 将代理能力进一步扩展到未来 provider 级路由需求
+- 仅在当前输出仍存在歧义时，继续增强用户侧摘要、query 输出和诊断可见性
+
+### 后续路线保留项
+
+- 输出格式 fallback 的可行性与设计
+- 多 key 调度架构与 rollout stage
+- 多 provider account-pool 架构
+- provider 级代理路由与脱敏规则
+- 自定义尺寸映射与 provider-native 能力暴露
+
+## 文档维护规则
+
+- `docs/spec.md` 记录当前行为、架构边界和稳定设计决策
+- `docs/terminology.md` 记录固定术语与生命周期图
+- `docs/tasks.md` 记录未完成任务与优先级
+- `README.md` 记录面向用户的快速使用说明
+- 临时分支计划、实现切片和已被主线文档吸收的迁移说明，不应继续保留在这里

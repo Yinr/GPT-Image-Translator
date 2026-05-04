@@ -16,7 +16,7 @@ export const APP_NAME = "gpt-image-translator";
 
 export const HELP_TEXT = `GPT Image Translator
 
-批量翻译目录中的图片，保持原目录结构输出，并将运行状态保存在 SQLite 中。
+批量翻译目录中的图片，保持原目录结构输出，并将批次（run）和图片任务（job）状态保存在 SQLite 中。
 
 Usage:
   ${APP_NAME} --config <path> [--dry-run] [--max-success <n>]
@@ -27,17 +27,17 @@ Usage:
 
 Commands:
   translate  执行图片翻译任务，默认命令
-  status     查看最近 runs 列表
-  inspect    查看指定 run 的详细信息
-  failed     查看指定 run 的失败 jobs
+  status     查看最近批次（runs）列表
+  inspect    查看指定批次（run）的详细信息
+  failed     查看指定批次（run）的失败图片任务（jobs）
   config upgrade  补全旧配置文件缺失的顶层配置块
 
 Options:
   -c, --config <path>  配置文件路径
       --dry-run        只扫描和规划，不实际请求 API
-      --max-success <n>  成功完成 n 张新图片后停止继续调度
-  -r, --run <runId>    inspect / failed 使用的 run id
-      --limit <n>      status 返回的最近 runs 数量，默认 20
+      --max-success <n>  成功完成 n 个新图片任务后停止继续调度
+  -r, --run <runId>    inspect / failed 使用的批次 id（run id）
+      --limit <n>      status 返回的最近批次（runs）数量，默认 20
       --full-update    完整重写配置为最新结构，会丢弃原格式和注释
       --allow-drop-comments  允许 full-update 重写包含注释的配置文件
   -h, --help           显示帮助

@@ -1,63 +1,65 @@
-# Spec: GPT Image Translator
+# 规格说明：GPT Image Translator
 
-## Objective
+## 目标
 
-Build a Deno command-line program that translates images in a directory by sending each image to an
-OpenAI-compatible `gpt-image-2` image edit API with a configured prompt. The program must preserve
-the input directory structure in the output directory, support YAML configuration, persist job state
-in SQLite, retry transient failures, and resume from interruptions.
+构建一个基于 Deno 的命令行程序，用于批量翻译目录中的图片。程序会将每张图片发送到
+OpenAI-compatible 的 `gpt-image-2` 图像编辑接口，并使用配置中的 prompt 进行处理。
 
-The initial user is a local operator running batch image translation jobs. The design should keep
-core execution independent from the CLI so a future web UI can reuse the same queue, storage, and
-API layers.
+系统必须满足以下要求：
 
-## Confirmed API Behavior
+- 保留输入目录在输出目录中的相对结构
+- 支持 YAML 配置
+- 使用 SQLite 持久化批次与图片任务状态
+- 对瞬时失败进行重试
+- 支持续跑中断后的未完成批次
 
-The API service configured in `.local/smoke-test/api-info.md` has been tested manually. Temporary
-scripts and notes are stored under `.local/smoke-test/` and should remain untracked.
+当前主要使用者是本地运行批量翻译任务的操作者。设计上应保持核心执行逻辑独立于 CLI，
+以便未来 Web UI 直接复用队列、存储和 API 接入层。
 
-- `GET /v1/models` works and lists `gpt-image-2`, `gpt-image-2-2k`, and `gpt-image-2-4k`.
-- `POST /v1/images/edits` works for `.local/smoke-test/037.jpg`.
-- Image edit responses are JSON, not raw image bytes.
-- Output image bytes are returned as base64 in `data[0].b64_json`.
-- Output extension should come from top-level `output_format`, observed as `png`.
-- `output.formatFromApi` controls whether the final output path follows response `output_format` or
-  keeps the configured `openai.image.outputFormat` extension.
-- A real image edit request took about 205 seconds, so long timeouts and durable job state are
-  required.
+## 已确认的 API 行为
 
-Provider-specific notes:
+`.local/smoke-test/api-info.md` 中记录的 API 服务已经过手工验证。相关临时脚本与说明保留在
+`.local/smoke-test/` 下，不应纳入版本控制。
 
-- Additional provider behavior notes should live under `docs/providers/` when a service claims
-  OpenAI compatibility but differs in request or response details.
-- `docs/providers/pic2api.md` records the current known `gpt-image-2` differences for `pic2api`,
-  especially its `size:auto` fallback-to-`1:1` behavior and provider-documented recommended size
-  tiers.
-- Adapter-specific request logic should live under `src/adapters/`, while shared parsing, retry, and
-  error helpers can remain under `src/openai/` when they are not tied to one vendor adapter.
+- `GET /v1/models` 可用，并返回 `gpt-image-2`、`gpt-image-2-2k`、`gpt-image-2-4k`
+- `POST /v1/images/edits` 可处理 `.local/smoke-test/037.jpg`
+- 图像编辑响应是 JSON，而不是原始图片字节流
+- 输出图片字节以 `data[0].b64_json` 的 base64 字段返回
+- 输出扩展名应优先来自顶层 `output_format`，已观察到值为 `png`
+- `output.formatFromApi` 控制最终输出路径是跟随响应 `output_format`，还是保留配置中的
+  `openai.image.outputFormat`
+- 一次真实图像编辑请求大约耗时 205 秒，因此需要较长超时和持久化状态
 
-## Tech Stack
+## API 接入说明
 
-- Runtime: Deno
-- Language: TypeScript
-- Config file: YAML
-- Persistent state: SQLite
-- API: OpenAI-compatible `/v1/images/edits`
-- Tests: Deno test runner
+- provider 层用于描述 API 账号归属、凭据、额度、路由、代理和健康度等运营层概念。
+- adapter 层用于描述请求路径、请求/响应字段差异、兼容逻辑和解析细节。
+- `docs/providers/pic2api.md` 记录了 `pic2api` adapter 的差异行为，尤其是
+  `size:auto` 回退到 `1:1` 以及推荐尺寸档位。
+- adapter 特有的请求逻辑应位于 `src/adapters/`；共享解析、重试和错误分类可以保留在
+  `src/openai/`，前提是这些逻辑不依赖某个具体 adapter。
+- 当前配置继续沿用历史上的 `openai` 顶层块名称，而 `openai.adapter` 用于选择 adapter。
 
-Preferred libraries:
+## 技术栈
 
-- Use Deno Standard Library where available: `@std/path`, `@std/fs`, `@std/cli`, `@std/yaml`, and
-  `@std/encoding`.
-- Prefer JSR sources for dependencies. Only use npm or URL imports when no suitable JSR package
-  exists or a concrete compatibility issue requires it.
-- Use `jsr:@db/sqlite` for SQLite unless a concrete compatibility issue appears.
-- Avoid custom implementations for common filesystem traversal, path parsing, CLI parsing, YAML
-  parsing, and base64 decoding.
+- 运行时：Deno
+- 语言：TypeScript
+- 配置文件：YAML
+- 持久化状态：SQLite
+- API：OpenAI-compatible `/v1/images/edits`
+- 测试：Deno test runner
 
-## Commands
+优先库选择：
 
-Planned commands:
+- 优先使用 Deno Standard Library：`@std/path`、`@std/fs`、`@std/cli`、`@std/yaml`、
+  `@std/encoding`
+- 依赖优先选择 JSR 源；仅在没有合适 JSR 方案或存在明确兼容性问题时使用 npm 或 URL import
+- SQLite 优先使用 `jsr:@db/sqlite`
+- 避免自行实现目录遍历、路径处理、CLI 解析、YAML 解析和 base64 解码等通用基础能力
+
+## 命令
+
+计划命令：
 
 ```bash
 deno task check
@@ -66,80 +68,54 @@ deno task fmt
 deno task translate --config ./config.example.yaml
 ```
 
-Direct execution:
+直接运行：
 
 ```bash
 deno run -A src/main.ts --config ./config.example.yaml
 ```
 
-Translate also supports a CLI-only success limit for controlled runs:
+支持使用 CLI 级成功上限做受控执行：
 
 ```bash
 deno run -A src/main.ts --config ./config.example.yaml --max-success 5
 ```
 
-## Project Structure
+## 项目结构
 
 ```text
 src/
-  main.ts                 Program entrypoint
-  cli/                    CLI args, command execution, terminal output
-  config/                 YAML loading, defaults, validation, merge logic
-  adapters/               Image adapter interface, factory, shared base, and vendor adapters
-  core/                   High-level pipeline, scanner, path mapping, events
-  queue/                  Durable job queue, scheduler, runner, concurrency
-  openai/                 Shared OpenAI-compatible parsing, error classification, and retry helpers
-  storage/                SQLite database, migrations, stores
-  fs/                     File writing, path helpers, MIME helpers
-  shared/                 Shared types, time utilities, result helpers
-tests/                    Unit and integration tests
-docs/                     Spec and implementation plan
-.local/smoke-test/        Local temporary API notes and samples, untracked
+  main.ts                 程序入口
+  cli/                    CLI 参数、命令执行、终端输出
+  config/                 YAML 加载、默认值、校验、合并逻辑
+  adapters/               图像 adapter 接口、工厂、共享基类与具体 adapter
+  core/                   高层流程、扫描、路径映射、事件
+  queue/                  持久化队列、调度器、执行器、并发控制
+  openai/                 共享的 OpenAI-compatible 解析、错误分类与重试辅助逻辑
+  storage/                SQLite 数据库、迁移、store
+  fs/                     文件写入、路径辅助、MIME 辅助
+  shared/                 共享类型、时间工具、结果工具
+tests/                    单元与集成测试
+docs/                     规格、术语与任务文档
+.local/smoke-test/        本地 smoke test 资料，忽略提交
 ```
 
-## Code Style
+## 代码风格
 
-Use small modules with explicit typed inputs and outputs. Keep CLI concerns out of core execution
-code.
+- 模块保持小而清晰，输入输出类型明确
+- CLI 相关逻辑不进入核心执行层
+- 已固定术语、命名规则和生命周期图见 `docs/terminology.md`
 
-Example style:
+## 配置
 
-```ts
-export interface ImageEditResult {
-  bytes: Uint8Array;
-  outputFormat: string;
-  width?: number;
-  height?: number;
-  revisedPrompt?: string;
-  usage?: unknown;
-}
-
-export function parseImageEditResponse(json: unknown): ImageEditResult {
-  if (!isRecord(json)) {
-    throw new Error("Image edit response must be a JSON object");
-  }
-
-  const first = Array.isArray(json.data) ? json.data[0] : undefined;
-  if (!isRecord(first) || typeof first.b64_json !== "string") {
-    throw new Error("Image edit response is missing data[0].b64_json");
-  }
-
-  return {
-    bytes: decodeBase64(first.b64_json),
-    outputFormat: typeof json.output_format === "string" ? json.output_format : "png",
-  };
-}
-```
-
-## Configuration
-
-Configuration precedence:
+配置优先级：
 
 ```text
 defaults < YAML config < CLI flags
 ```
 
-Representative YAML:
+术语与生命周期图示见 `docs/terminology.md`。
+
+代表性 YAML：
 
 ```yaml
 configVersion: 2
@@ -149,7 +125,8 @@ outputDir: ./output
 
 openai:
   baseUrl: http://127.0.0.1:3000/v1
-  # Optional: use a direct key in a local private config file.
+  adapter: openai
+  # 可选：在本地私有配置文件中直接填写 key
   # apiKey: sk-your-key
   apiKeyEnv: OPENAI_API_KEY
   model: gpt-image-2
@@ -199,84 +176,77 @@ logging:
   dir: ./logs
 ```
 
-Logging behavior notes:
+配置说明：
 
-- `logging.enabled: false` is the default and should preserve current behavior.
-- The initial logging feature should focus on local CLI diagnostics, not distributed telemetry.
-- User-facing progress output and diagnostic log persistence should be treated as related but
-  distinct concerns.
-- The project should not adopt `@std/log` as a new foundation because Deno marks it as no longer
-  recommended and likely removable in the future.
+- 顶层 `openai` 块当前表示 OpenAI-compatible 请求设置
+- `openai.adapter` 用于选择 adapter 实现
+- 当前支持的 adapter 值为 `openai`、`gpt2api`、`pic2api`
+- provider 级建模应在后续单独引入，而不是直接复用 adapter 选择语义
 
-Config upgrade behavior notes:
+日志配置说明：
 
-- Missing `configVersion` means version `0`, representing configs created before versioning existed.
-- `config upgrade` should validate the existing config before writing changes.
-- The default upgrade mode should preserve comments by only applying versioned text migrations.
-- Version `0 -> 1` inserts `configVersion` near the beginning and appends newly introduced top-level
-  blocks such as `logging` at the end.
-- Version `1 -> 2` updates `configVersion` and appends the optional `preprocess.aspectPad` block.
-- `--full-update` may rewrite the complete config into the latest shape, but it can drop original
-  comments and formatting.
-- `--full-update` must reject commented files unless `--allow-drop-comments` is provided.
-- Normal CLI execution should warn when a config is older than the current supported version, but it
-  should not automatically rewrite the config.
-- Before the project is prepared for a stable release, config-key renames and shape changes may be
-  implemented without shipping immediate migration support; release preparation should include a
-  final pass that adds and verifies the required config migrations for the stabilized schema.
+- `logging.enabled: false` 是默认值，应保持当前无日志副作用行为
+- 当前日志功能聚焦于本地 CLI 诊断，不扩展为分布式遥测
+- 用户可见进度输出与诊断日志持久化属于相关但分离的两层
+- 不应把 `@std/log` 作为新的日志基础
 
-## Queue Model
+配置升级说明：
 
-Each input image becomes one durable job.
+- 缺失 `configVersion` 视为版本 `0`
+- `config upgrade` 在写入前必须先校验现有配置
+- 默认升级模式通过版本化文本迁移尽量保留原注释与结构
+- `0 -> 1` 插入 `configVersion` 并补齐如 `logging` 等新增顶层块
+- `1 -> 2` 更新版本号并补齐 `preprocess.aspectPad`
+- `--full-update` 可重写为最新完整结构，但可能丢失原有注释与排版
+- 当文件包含注释时，`--full-update` 必须搭配 `--allow-drop-comments`
+- 正常运行只允许提示配置过旧，不允许自动改写配置文件
 
-Job statuses:
+## 队列模型
 
-- `pending`: discovered and ready to run
-- `running`: currently executing
-- `retryable`: failed transiently and waiting for `next_attempt_at`
-- `succeeded`: output successfully written
-- `failed`: permanently failed
-- `skipped`: intentionally skipped
-- `cancelled`: cancelled before completion
+每张输入图片会生成一个持久化图片任务。
 
-Execution flow:
+图片任务状态：
+
+- `pending`：已发现，等待执行
+- `running`：执行中
+- `retryable`：发生瞬时失败，等待 `next_attempt_at`
+- `succeeded`：成功写出输出
+- `failed`：永久失败
+- `skipped`：被显式跳过
+- `cancelled`：执行前取消
+
+执行流程：
 
 ```text
-scan input directory
-  -> map input paths to output paths
-  -> upsert jobs in SQLite
-  -> schedule pending and due retryable jobs
-  -> run with configured concurrency and delay
-  -> call /v1/images/edits
-  -> decode data[0].b64_json
-  -> choose final output path according to output.formatFromApi
-  -> write output bytes to the chosen path
-  -> persist status, attempts, and metadata
+扫描输入目录
+  -> 计算输入到输出的路径映射
+  -> 将图片任务写入或更新到 SQLite
+  -> 调度 pending 和到期的 retryable 任务
+  -> 按配置的并发和间隔执行
+  -> 调用 /v1/images/edits
+  -> 解码 data[0].b64_json
+  -> 按 output.formatFromApi 选择最终输出路径
+  -> 写入输出字节
+  -> 持久化状态、尝试记录和元数据
 ```
 
-Success-limit behavior:
+成功上限行为：
 
-- `translate --max-success <n>` is a CLI-only execution control, not a YAML config field.
-- It counts only jobs that become `succeeded` during the current invocation.
-- Previously succeeded jobs from earlier invocations do not consume the limit.
-- `skipped` jobs do not consume the limit.
-- New job launch gating must respect `current succeeded in this invocation + in-flight jobs < maxSuccess`
-  so concurrency does not overshoot the remaining success budget.
-- Reaching the limit should stop launching new jobs, let current in-flight jobs finish, and leave the
-  run resumable if pending or retryable work remains.
+- `translate --max-success <n>` 是 CLI 级执行控制，不属于 YAML 配置项
+- 只统计当前 invocation 中新变为 `succeeded` 的图片任务
+- 之前 invocation 中已成功的图片任务不消耗本次上限
+- `skipped` 不消耗上限
+- 启动新任务前必须满足 `当前 invocation 成功数 + in-flight 数 < maxSuccess`
+- 达到上限后，不再启动新任务，但允许当前 in-flight 任务完成，并保持批次可续跑
 
-## Aspect-Ratio Preprocessing Design
+## 长宽比预处理设计
 
-`gpt-image-2` image edit requests only expose fixed canvas sizes through `size`: `1024x1024`,
-`1024x1536`, and `1536x1024`. Source images with a different ratio can be cropped or visually
-altered by the model. The preprocessing feature should reduce that risk by padding the input image
-to the nearest supported API ratio before the API call, while preserving the original pixels at
-their original scale.
+`gpt-image-2` 图像编辑请求只支持固定画布尺寸：`1024x1024`、`1024x1536`、`1536x1024`。
+非标准比例图片可能被模型裁切或改变构图，因此可选的预处理能力应先将原图补边到最接近的支持比例，再发起 API 请求，同时保持原始像素不缩小。
 
-This feature is optional and disabled by default. When disabled, the original input image path is
-sent to the API and the configured `openai.image.size` behavior applies as it does now.
+该功能默认关闭。关闭时，原图路径直接送入 API，并沿用现有 `openai.image.size` 逻辑。
 
-Configuration shape:
+配置形态：
 
 ```yaml
 preprocess:
@@ -287,92 +257,70 @@ preprocess:
     intermediateDir: .intermediate
 ```
 
-Preprocessing flow when enabled:
+启用后的预处理流程：
 
 ```text
-job input image
-  -> read source dimensions
-  -> choose nearest supported API canvas ratio
-  -> compute padded canvas dimensions without shrinking source pixels
-  -> render source image centered on the padded canvas
-  -> send padded temporary input to /v1/images/edits
-  -> set request size to the selected API canvas size
-  -> decode API output
-  -> optionally preserve uncropped API output under outputDir/intermediateDir
-  -> optionally crop API output back to the original source rectangle
-  -> write final output to the normal job output path
+图片任务输入图片
+  -> 读取原图尺寸
+  -> 选择最接近的支持画布比例
+  -> 计算不缩小原图像素的补边画布尺寸
+  -> 将原图居中绘制到补边画布
+  -> 将补边后的临时输入发送到 /v1/images/edits
+  -> 请求中使用所选 API 画布尺寸
+  -> 解码 API 输出
+  -> 可选保留未裁剪输出到 outputDir/intermediateDir
+  -> 可选按原图区域裁剪回去
+  -> 将结果写入正常输出路径
 ```
 
-Pipeline boundaries:
+模块边界：
 
-- The pure aspect-ratio planner belongs under `src/core`, not under `src/openai`, because it is a
-  provider-independent decision based on dimensions and supported canvas ratios.
-- The image processing adapter should own reading dimensions, padding, temporary file creation, and
-  crop-back. Queue code should call this adapter through a small interface rather than manipulating
-  image pixels directly.
-- The OpenAI client should only receive the prepared image path and the selected request `size`; it
-  should not decide how padding or crop-back works.
-- Temporary padded inputs are implementation details and should be cleaned up after the job attempt
-  when safe. Durable intermediate API outputs are only kept when `cropBackToOriginal` is enabled.
+- 纯比例规划器位于 `src/core`，因为它是独立于 adapter 的几何决策
+- 图像处理 adapter 负责读尺寸、补边、临时文件和 crop-back
+- queue 层只通过小接口调用图像处理能力，不直接操作像素
+- adapter/client 只接收准备好的输入路径与请求 `size`，不负责补边和裁剪策略
 
-Planner rules:
+规划规则：
 
-- Supported API ratios are derived from `1024x1024`, `1024x1536`, and `1536x1024`.
-- Select the supported ratio with the smallest absolute ratio difference from the source ratio.
-- Tie-break deterministically in favor of the smaller padding area, then the stable size order
-  `1024x1024`, `1024x1536`, `1536x1024`.
-- The padded canvas is the selected ratio scaled up just enough to contain the source width and
-  height; source pixels are never downscaled during preprocessing.
-- The source rectangle is centered in the padded canvas. Odd padding pixels may differ by one pixel;
-  store the exact left/top/width/height rectangle for crop-back.
+- 支持比例来自 `1024x1024`、`1024x1536`、`1536x1024`
+- 选择与源图比例绝对差最小的支持比例
+- 比例相同时，按更少补边面积，再按稳定顺序
+  `1024x1024`、`1024x1536`、`1536x1024` 决定
+- 画布尺寸只放大不缩小，且必须完整包含原图
+- 原图在补边画布中居中，记录精确 source rect 供 crop-back 使用
 
-Fill behavior:
+填充规则：
 
-- `transparent` uses transparent padding when the generated padded input format supports alpha.
-- `white` uses opaque white padding.
-- If a source or selected temporary format cannot preserve transparency, the implementation must
-  either use a lossless alpha-capable temporary format such as PNG or fail clearly during
-  preprocessing. Silent conversion to a visually different background is not acceptable.
+- `transparent` 使用透明补边，前提是临时格式支持 alpha
+- `white` 使用纯白补边
+- 如果选定临时格式无法保留透明度，必须改用支持 alpha 的无损格式，或明确报错
 
-Crop-back behavior:
+裁剪规则：
 
-- `cropBackToOriginal: false` writes the uncropped API output as the final output, preserving the
-  padded canvas composition returned by the API.
-- `cropBackToOriginal: true` stores the uncropped API output under
-  `outputDir/intermediateDir/<job-relative-output>` and writes a cropped final output to the normal
-  job output path.
-- Crop-back must crop only; it must not resize. The crop rectangle should be mapped from the source
-  rectangle in the padded input to the API output dimensions. If the API returns a different pixel
-  size than requested, scale the crop rectangle proportionally and round deterministically.
+- `cropBackToOriginal: false` 时，未裁剪 API 输出即为最终输出
+- `cropBackToOriginal: true` 时，未裁剪输出写入
+  `outputDir/intermediateDir/<job-relative-output>`，最终输出写入正常路径
+- crop-back 只允许裁剪，不允许缩放
+- 如果 API 返回尺寸与请求尺寸不同，crop rect 需按比例映射并稳定取整
 
-Storage and query implications:
+存储与查询要求：
 
-- The existing `outputs` table can continue to represent the final user-facing output.
-- Preprocessing metadata should be persisted so future `inspect` output and Web UI views can explain
-  selected API size, padded canvas dimensions, source rectangle, fill mode, crop-back state, and any
-  preserved uncropped output path.
-- Prefer extending output/job metadata with explicit nullable columns or a small processing metadata
-  table over encoding operational behavior only in log lines. The exact schema should be chosen in
-  the implementation task after checking migration impact.
-- Attempt records should keep failure details for preprocessing errors. Invalid or unsupported image
-  processing should be non-retryable; transient filesystem failures may remain retryable if they can
-  be classified safely.
+- `outputs` 表继续表示最终输出
+- 预处理相关信息应持久化，便于 `inspect` 和未来 Web UI 解释所选尺寸、画布、fill、crop-back 和未裁剪输出位置
+- 预处理错误应写入 attempt 失败信息；非法图像处理错误为不可重试，瞬时文件系统错误可视情况归为可重试
 
-Image library direction:
+图像库要求：
 
-- Use a mature Deno-compatible image processing dependency only after verifying Windows support,
-  supported formats, alpha handling, and whether it requires native binaries.
-- Prefer JSR or Deno-native packages. An npm package is acceptable only if no suitable Deno/JSR
-  option supports dimension probing, padding/compositing, and cropping reliably.
-- Record the chosen dependency and tradeoffs in `docs/tasks.md` or a short ADR before
-  implementation.
+- 依赖必须验证 Windows 兼容性、格式支持、alpha 处理和是否依赖原生二进制
+- 优先 JSR 或 Deno 原生方案
+- 具体依赖与取舍记录在 `docs/tasks.md` 或 ADR 中
 
-## Error Handling
+## 错误处理
 
-Retryable failures:
+可重试失败：
 
-- Network errors
-- Request timeout
+- 网络错误
+- 请求超时
 - HTTP 408
 - HTTP 409
 - HTTP 425
@@ -382,120 +330,92 @@ Retryable failures:
 - HTTP 503
 - HTTP 504
 
-Non-retryable failures:
+不可重试失败：
 
 - HTTP 400
 - HTTP 401
 - HTTP 403
 - HTTP 404
 - HTTP 422
-- Invalid config
-- Unsupported file type
-- Missing input file
-- Missing `data[0].b64_json` in a successful response
+- 非法配置
+- 不支持的文件类型
+- 输入文件缺失
+- 成功响应中缺失 `data[0].b64_json`
 
-Special handling:
+特殊规则：
 
-- `401` and `403` should stop the whole run because credentials or permissions are invalid.
-- `429` should honor `Retry-After` when present, otherwise use exponential backoff.
-- A job that reaches `retry.maxAttempts` becomes `failed`.
+- `401` 与 `403` 应立即停止整个批次
+- `429` 优先使用 `Retry-After`，否则回退到指数退避
+- 达到 `retry.maxAttempts` 后，图片任务状态转为 `failed`
 
-## Testing Strategy
+## 测试策略
 
-- Unit tests for scanner, path mapping, response parsing, error classification, retry policy, and
-  scheduler.
-- Storage tests for SQLite migrations and job state transitions.
-- Integration tests for pipeline resume behavior using a fake image edit client.
-- Real API smoke tests must be opt-in and guarded by environment variables.
+- 为 scanner、路径映射、响应解析、错误分类、重试策略和调度器编写单元测试
+- 为 SQLite 迁移和图片任务状态转换编写存储测试
+- 用 fake image edit client 做续跑与流程集成测试
+- 真机 API smoke test 必须显式 opt-in，并由环境变量保护
 
-## Boundaries
+## 边界
 
-- Always: Treat API keys as secrets and avoid printing them.
-- Always: Allow API keys to come from either `openai.apiKey` or `openai.apiKeyEnv`, with
-  `openai.apiKey` taking precedence when both are set.
-- Always: Keep user-facing progress output readable even if file-based diagnostic logging is
-  disabled.
-- Always: Avoid writing raw API keys or other secrets into logs, persisted log files, or structured
-  diagnostics.
-- Always: Treat config upgrades as explicit user actions; normal translate/query commands may warn
-  about old configs but must not silently rewrite them.
-- Always: Preserve directory structure from input to output.
-- Always: Persist job status before and after API attempts.
-- Always: Decode `data[0].b64_json` before writing output files.
-- Always: Use response `output_format` for the final extension when `output.formatFromApi` is
-  enabled.
-- Always: Keep the configured planned extension when `output.formatFromApi` is disabled.
-- Always: Prefer Deno Standard Library or mature Deno libraries over project-local utility
-  implementations for common infrastructure.
-- Always: Prefer JSR dependencies and record any exception in the spec or implementation plan.
-- Ask first: Adding a web framework, changing storage away from SQLite, or introducing an external
-  queue service.
-- Never: Commit real API keys, temporary API responses, or generated image outputs.
+- 总是：把 API key 当作 secret，不打印到输出中
+- 总是：允许 API key 来自 `openai.apiKey` 或 `openai.apiKeyEnv`，两者同时存在时 `openai.apiKey` 优先
+- 总是：即使文件日志关闭，也保持用户可见进度输出可读
+- 总是：不要把原始 API key 或其他 secret 写入日志、持久化日志或结构化诊断数据
+- 总是：配置升级必须显式执行；普通 translate / query 命令只允许提示，不允许静默改写配置
+- 总是：保留输入目录结构
+- 总是：在 API 尝试前后持久化图片任务状态
+- 总是：写文件前先解码 `data[0].b64_json`
+- 总是：当 `output.formatFromApi` 开启时，以响应 `output_format` 决定最终扩展名
+- 总是：当 `output.formatFromApi` 关闭时，保留配置中的规划扩展名
+- 总是：通用基础设施优先使用 Deno 标准库或成熟 Deno 依赖
+- 总是：优先使用 JSR 依赖，例外情况应记录到规格或任务文档
+- 需要先确认：引入 Web 框架、更换 SQLite、接入外部队列服务
+- 禁止：提交真实 API key、临时 API 响应和生成图片输出
 
-## Success Criteria
+## 成功标准
 
-- A YAML config can run a directory translation job.
-- The scanner recursively finds supported image files in stable order.
-- Output paths mirror input paths and follow either the API output format or the configured planned
-  extension, depending on `output.formatFromApi`.
-- The OpenAI-compatible image edit response is parsed and written correctly.
-- Transient failures are retried with backoff.
-- Authentication and permission errors stop the run with a clear error.
-- Interrupted runs can resume without reprocessing completed outputs.
-- Core queue and storage logic can be reused by a future Web UI.
+- 一份 YAML 配置可以驱动目录级图片翻译
+- scanner 能稳定顺序扫描支持的图片文件
+- 输出路径保留输入目录结构，并根据 `output.formatFromApi` 决定最终扩展名
+- OpenAI-compatible 图像编辑响应能被正确解析并写出
+- 瞬时失败能按退避策略重试
+- 认证与权限错误能以清晰错误中止批次
+- 中断后的批次能续跑且不重复处理已完成输出
+- 核心队列与存储逻辑可被未来 Web UI 复用
 
-## Future Architecture Considerations
+## 未来架构考虑
 
-The current implementation assumes one provider and one active API key source per run. A later major
-version may expand this into a dedicated account-scheduling layer.
+当前实现默认一个批次只使用一个 provider 和一个活跃 API key 来源。后续大版本可以扩展为专门的账号调度层。
 
-The current run-level cooldown for retryable failures is a pragmatic fit for the single active
-API-key model. It should be treated as a safety default, not as the final scheduling abstraction.
+当前的 run-level cooldown 仅适合单活跃 key 的安全默认行为，不应视为最终调度抽象。
 
-Expected future direction:
+后续方向：
 
-- Support multiple API keys for one provider without breaking the current single-key path.
-- Add API-key-level cooldown and health state so a quota/rate-limit failure on one key does not
-  block other healthy keys.
-- Add provider-level cooldown and health state so provider-wide failures can pause all keys under
-  that provider without confusing them with per-key quota exhaustion.
-- Add explicit key-selection strategies, including primary-with-failover and balanced usage.
-- Allow queue concurrency to scale with the number of healthy available keys rather than treating
-  all requests as if they share one identical credential.
-- Persist masked key identity or key slot metadata per attempt so operators can diagnose routing
-  behavior without exposing raw secrets.
-- Eventually generalize from a single-provider key pool to a multi-provider account pool with health
-  tracking and policy-driven routing.
-- Allow provider-level proxy configuration so operators can route specific providers through
-  different network proxies when required by local network conditions.
+- 在不破坏单 key 路径的前提下支持单 provider 多 key
+- 增加 API-key 级 cooldown 与健康状态，避免单 key 限流/额度问题阻断其他健康 key
+- 增加 provider 级 cooldown 与健康状态，区分 provider 级故障与 key 级配额问题
+- 支持显式 key 选择策略，如 primary-with-failover 与 balanced usage
+- 让并发能力随健康 key 数量增长，而不是把所有请求都视为共享一份凭据
+- 为每次 attempt 记录 masked key identity 或 key slot 元数据，便于诊断而不暴露 secret
+- 最终从单 provider key pool 演进到多 provider account pool
+- 支持 provider 级代理配置
 
-Design constraints for that future work:
+未来设计约束：
 
-- Key/provider selection should live in a dedicated scheduling module, not inside the low-level
-  image client alone.
-- Secrets must never be written to logs, CLI output, or persisted diagnostic records.
-- Provider-specific request differences should remain below the queue orchestration layer whenever
-  possible.
-- Proxy settings should belong to provider/client construction rather than job planning, and proxy
-  details must not be written to diagnostic logs if they include credentials.
-- The first implementation step should remain intentionally small: one provider, multiple keys,
-  deterministic rotation.
-- Configuration format changes should be batched carefully and avoided for small runtime-only fixes;
-  each new user-facing config field carries upgrade and documentation cost.
+- key/provider 选择应位于独立调度模块，而不是只埋在底层 image client 中
+- secret 永远不能进入日志、CLI 输出或持久化诊断记录
+- provider / adapter 的差异应尽量停留在 queue 调度层之下
+- 代理配置属于 adapter/client 构造层，而不是 job planning 层
+- 多 key 的第一阶段应保持小步演进：单 provider、多 key、确定性轮换
+- 新增用户可见配置字段必须谨慎评估升级和文档成本
 
-## Open Questions
+## 开放问题
 
-- Whether `gpt-image-2-2k` or `gpt-image-2-4k` should be exposed as presets.
-- For future multi-key scheduling, should attempt metadata store only a masked key label, or also a
-  separate non-secret logical account id?
-- For future multi-provider support, should provider failover be automatic, policy-driven, or always
-  explicitly configured?
-- For future provider proxy support, should proxy configuration be global, provider-specific, or
-  both?
-- For future key balancing, should scheduling remain simple round-robin at first, or account for
-  cooldowns, quotas, and recent rate limits from the beginning?
-- If diagnostic logging is enabled during dry runs, should it write files or only use
-  console/in-memory diagnostics?
-- Whether prompt should support per-directory or per-file overrides later.
-- Whether cancellation and pause controls are needed in the first CLI release or only for the future
-  Web UI.
+- 是否要把 `gpt-image-2-2k` 或 `gpt-image-2-4k` 暴露为预设
+- 未来多 key 调度中，attempt metadata 应只存 masked key label，还是同时保留非敏感 logical account id
+- 未来多 provider 支持中，provider failover 是自动、策略驱动，还是显式配置
+- 未来 provider 代理配置应是全局、provider-specific，还是二者兼有
+- 未来 key balancing 初版是否保持简单 round-robin，还是从一开始就考虑 cooldown、quota 和 rate limit
+- dry run 开启诊断日志时，是否应写文件，还是只保留 console / memory 诊断
+- prompt 未来是否支持按目录或按文件覆盖
+- cancel / pause 控制是否只留给未来 Web UI

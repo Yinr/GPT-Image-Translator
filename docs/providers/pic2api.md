@@ -1,90 +1,80 @@
-# Pic2API Notes
+# Pic2API 适配说明
 
-## Scope
+## 范围
 
-This note tracks `pic2api` behavior that differs from the default OpenAI image-edit assumptions in
-this repository. It is not intended to copy the provider's entire public documentation. It records
-only the constraints and extensions that matter for this translator.
+本文档记录 `pic2api` adapter 与本仓库默认 OpenAI 图像编辑假设之间的重要差异，只保留对本项目实现有影响的约束和扩展，不复制其完整官方文档。
 
-Reference source used during implementation planning:
+实现时参考的资料：
 
-- Original provider docs: `https://www.pic2api.com/user/api-docs`
-- Local snapshot: `.local/doc/pic2api.md`
+- 官方文档：`https://www.pic2api.com/user/api-docs`
+- 本地快照：`.local/doc/pic2api.md`
 
-## Confirmed Relevant Endpoints
+## 已确认的相关端点
 
-- `POST /v1/images/generations`: image generation
-- `POST /v1/chat/completions`: image generation with chat-style multimodal input
-- `GET /v1/models`: model list
+- `POST /v1/images/generations`：图像生成
+- `POST /v1/chat/completions`：带图像输入的 chat 风格图像生成
+- `GET /v1/models`：模型列表
 
-The provider documentation claims OpenAI-compatible support, so the translator should continue to
-prefer the existing OpenAI-compatible image-edit path first unless a concrete incompatibility is
-confirmed.
+文档声称其支持 OpenAI-compatible 接口，因此在没有明确不兼容证据前，翻译器应继续优先使用现有的 OpenAI-compatible 图像编辑路径。
 
-## GPT-Image-2 Differences
+## `gpt-image-2` 差异
 
-### Size behavior
+### 尺寸行为
 
-- `gpt-image-2` on `pic2api` does not support AUTO size behavior.
-- If `size="auto"`, `aspect_ratio="auto"`, or both fields are omitted, the provider may fall back to
-  a native `1:1` output.
-- The provider documentation describes `size` as pixel dimensions (`WxH`) and lists recommended
-  sizes for 1K, 2K, and 4K tiers.
+- `pic2api` 下的 `gpt-image-2` 不支持 `AUTO` 尺寸行为
+- 如果 `size="auto"`、`aspect_ratio="auto"`，或两者都省略，接口可能回退到原生 `1:1` 输出
+- 文档中 `size` 以像素尺寸 `WxH` 表示，并按 1K / 2K / 4K 给出推荐尺寸组
 
-Recommended sizes documented by the provider:
+文档给出的推荐尺寸：
 
-- 1K: `1024x1024`, `1280x720`, `720x1280`, `1536x1024`, `1024x1536`, `1152x864`, `864x1152`,
-  `1120x896`, `896x1120`, `1456x624`
-- 2K: `2048x2048`, `2560x1440`, `1440x2560`, `2496x1664`, `1664x2496`, `2304x1728`, `1728x2304`,
-  `2240x1792`, `1792x2240`, `3024x1296`
-- 4K: `2480x2480`, `3328x1872`, `1872x3328`, `3056x2032`, `2032x3056`, `2880x2160`, `2160x2880`,
-  `2784x2224`, `2224x2784`, `3808x1632`
+- 1K：`1024x1024`、`1280x720`、`720x1280`、`1536x1024`、`1024x1536`、`1152x864`、`864x1152`、`1120x896`、`896x1120`、`1456x624`
+- 2K：`2048x2048`、`2560x1440`、`1440x2560`、`2496x1664`、`1664x2496`、`2304x1728`、`1728x2304`、`2240x1792`、`1792x2240`、`3024x1296`
+- 4K：`2480x2480`、`3328x1872`、`1872x3328`、`3056x2032`、`2032x3056`、`2880x2160`、`2160x2880`、`2784x2224`、`2224x2784`、`3808x1632`
 
-Current repository decision:
+当前仓库决策：
 
-- Keep the existing fixed OpenAI-style image-edit path and aspect-pad preprocessing for now.
-- `pic2api + gpt-image-2 + size:auto` should resolve to the nearest documented recommended size from
-  the provider list, based on source-image ratio and the current quality tier.
-- Keep current preprocessing and crop-back behavior even after that size selection is introduced.
-- Do not yet expose arbitrary provider-native `WxH` sizes in user config.
+- 继续保留当前固定 OpenAI 风格图像编辑路径和 aspect-pad 预处理能力
+- 对 `pic2api + gpt-image-2 + size:auto`，应按源图比例与当前质量档位，从推荐尺寸中选择最近值
+- 即使引入该尺寸选择，也继续保留现有预处理和 crop-back 行为
+- 暂不在用户配置中暴露任意 provider-native `WxH` 尺寸
 
-### Quality behavior
+### 质量行为
 
-The provider documentation maps quality-like values to resolution tiers:
+文档中的质量档位与分辨率层级映射为：
 
 - `standard` / `1k` -> 1K
 - `hd` / `2k` -> 2K
 - `4k` / `high` / `ultra` -> 4K
 
-Current repository decision:
+当前仓库决策：
 
-- Keep the existing user-facing quality values for now.
-- Add provider-aware quality-to-tier mapping later if `pic2api` mode is introduced.
+- 保留现有用户侧质量值
+- 如后续继续扩展 `pic2api` 模式，再引入 adapter-aware 的质量到档位映射
 
-## Image Editing Extensions Not Yet Adopted
+## 尚未采用的图像编辑扩展
 
-The provider documentation includes additional flows not yet used by this repository:
+文档还包含以下流程，但本仓库当前未接入：
 
-- `POST /v1/chat/completions` with `image_url` parts for image-to-image and multi-image input
-- `POST /v1/images/generations` with `image_urls`
-- AUTO aspect-ratio behavior for non-`gpt-image-2` models
+- `POST /v1/chat/completions` + `image_url` parts 的 image-to-image / 多图输入
+- `POST /v1/images/generations` + `image_urls`
+- 非 `gpt-image-2` 模型下的自动宽高比行为
 
-Current repository decision:
+当前仓库决策：
 
-- Do not add these provider-specific flows yet.
-- Record them for future provider-specific implementation when the client abstraction is expanded.
+- 这些 adapter-specific 流程暂不接入
+- 等 client / adapter 抽象进一步扩展后，再决定是否开放
 
-## Error Handling Notes
+## 错误处理说明
 
-The provider documents these status codes as relevant:
+文档中与当前实现相关的状态码：
 
-- `401`: invalid or expired API key
-- `402`: insufficient balance
-- `403`: forbidden
-- `429`: rate limited
-- `500`: server error
-- `502`: upstream unavailable
+- `401`：API key 无效或已过期
+- `402`：余额不足
+- `403`：禁止访问
+- `429`：触发限流
+- `500`：服务端错误
+- `502`：上游不可用
 
-Future work:
+后续关注点：
 
-- Review whether `402` should be treated as a stop-run error for single-provider/single-key runs.
+- 评估 `402` 是否应在单 provider / 单 key 模式下直接视为 stop-run 错误
