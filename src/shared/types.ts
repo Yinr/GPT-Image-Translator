@@ -1,3 +1,6 @@
+import type { AttemptStatus, JobStatus, RunStatus } from "./status.ts";
+export type { AttemptStatus, JobStatus, RunStatus } from "./status.ts";
+
 export interface AppConfig {
   configVersion: number;
   inputDir: string;
@@ -149,19 +152,6 @@ export interface RetryDecision {
   delayMs: number;
   exhausted: boolean;
 }
-
-export type RunStatus = "running" | "completed" | "failed" | "cancelled";
-
-export type JobStatus =
-  | "pending"
-  | "running"
-  | "retryable"
-  | "succeeded"
-  | "failed"
-  | "skipped"
-  | "cancelled";
-
-export type AttemptStatus = "succeeded" | "retryable" | "failed";
 
 export interface RunRecord {
   id: string;

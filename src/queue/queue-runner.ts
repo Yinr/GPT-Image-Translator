@@ -1,4 +1,5 @@
 import type { AspectPadConfig, JobRecord, RetryConfig } from "../shared/types.ts";
+import { ATTEMPT_STATUS, RUN_STATUS } from "../shared/status.ts";
 import { sleep } from "../shared/time.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
@@ -137,17 +138,17 @@ export async function runQueue(options: QueueRunnerOptions): Promise<QueueRunSum
   options.runStore.updateCounts(options.runId);
   if (summary.stopReason === "interrupted" || summary.stopReason === "success_limit") {
     // Keep the run resumable. Completed in-flight jobs have already persisted their final state.
-    options.runStore.updateStatus(options.runId, "running");
+    options.runStore.updateStatus(options.runId, RUN_STATUS.running);
   } else if (summary.stopped) {
     options.runStore.updateStatus(
       options.runId,
-      "failed",
+      RUN_STATUS.failed,
       (options.now ?? (() => new Date().toISOString()))(),
     );
   } else {
     options.runStore.updateStatus(
       options.runId,
-      summary.failed > 0 ? "failed" : "completed",
+      summary.failed > 0 ? RUN_STATUS.failed : RUN_STATUS.completed,
       (options.now ?? (() => new Date().toISOString()))(),
     );
   }
@@ -172,10 +173,10 @@ function processCompleted(
     }
     summary.processed += 1;
     summary[result.status] += 1;
-    if (result.status === "retryable" && result.nextAttemptAt) {
+    if (result.status === ATTEMPT_STATUS.retryable && result.nextAttemptAt) {
       setCooldownUntil(result.nextAttemptAt);
     }
-    if (result.stopRun || (options.failFast && result.status === "failed")) {
+    if (result.stopRun || (options.failFast && result.status === ATTEMPT_STATUS.failed)) {
       summary.stopped = true;
       summary.stopReason = "error";
     }
@@ -196,7 +197,8 @@ function canLaunchAnotherJob(
   maxSuccess: number | undefined,
   inFlightCount: number,
 ): boolean {
-  return maxSuccess === undefined || maxSuccess <= 0 || summary.succeeded + inFlightCount < maxSuccess;
+  return maxSuccess === undefined || maxSuccess <= 0 ||
+    summary.succeeded + inFlightCount < maxSuccess;
 }
 
 function nextRunnableJob(

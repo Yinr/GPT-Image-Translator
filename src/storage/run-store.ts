@@ -1,4 +1,5 @@
 import type { RunRecord, RunStatus } from "../shared/types.ts";
+import { JOB_STATUS, RUN_STATUS } from "../shared/status.ts";
 import type { AppDatabase } from "./db.ts";
 import { mapRun } from "./row-mappers.ts";
 
@@ -35,10 +36,10 @@ export class RunStore {
     const row = this.db.prepare(`
       SELECT * FROM runs
       WHERE config_hash = ?
-        AND status = 'running'
+        AND status = ?
       ORDER BY started_at DESC
       LIMIT 1
-    `).get(configHash);
+    `).get(configHash, RUN_STATUS.running);
     return row ? mapRun(row as Record<string, unknown>) : undefined;
   }
 
@@ -62,12 +63,15 @@ export class RunStore {
     const counts = this.db.prepare(`
       SELECT
         COUNT(*) AS total_jobs,
-        SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded_jobs,
-        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_jobs,
-        SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) AS skipped_jobs
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS succeeded_jobs,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS failed_jobs,
+        SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS skipped_jobs
       FROM jobs
       WHERE run_id = ?
-    `).get(id) as Record<string, number>;
+    `).get(JOB_STATUS.succeeded, JOB_STATUS.failed, JOB_STATUS.skipped, id) as Record<
+      string,
+      number
+    >;
 
     this.db.prepare(`
       UPDATE runs

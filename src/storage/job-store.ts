@@ -1,5 +1,5 @@
 import type { JobRecord, JobStatus } from "../shared/types.ts";
-import { JOB_STATUSES } from "../shared/statuses.ts";
+import { JOB_STATUS, JOB_STATUSES } from "../shared/status.ts";
 import type { AppDatabase } from "./db.ts";
 import { mapJob } from "./row-mappers.ts";
 
@@ -38,16 +38,18 @@ export class JobStore {
         status = excluded.status,
         completed_at = excluded.completed_at,
         updated_at = excluded.updated_at
-      WHERE jobs.status NOT IN ('succeeded', 'running')
+      WHERE jobs.status NOT IN (?, ?)
     `).run(
       input.id,
       input.runId,
       input.inputPath,
       input.outputPath,
-      input.status ?? "pending",
+      input.status ?? JOB_STATUS.pending,
       input.now,
       input.now,
       input.completedAt ?? null,
+      JOB_STATUS.succeeded,
+      JOB_STATUS.running,
     );
   }
 
@@ -65,9 +67,9 @@ export class JobStore {
     return this.db.prepare(`
       SELECT * FROM jobs
       WHERE run_id = ?
-        AND status = 'failed'
+        AND status = ?
       ORDER BY updated_at, input_path
-    `).all(runId).map((row) => mapJob(row as Record<string, unknown>));
+    `).all(runId, JOB_STATUS.failed).map((row) => mapJob(row as Record<string, unknown>));
   }
 
   listRunnable(runId: string, now: string, limit: number): JobRecord[] {
@@ -75,12 +77,14 @@ export class JobStore {
       SELECT * FROM jobs
       WHERE run_id = ?
         AND (
-          status = 'pending'
-          OR (status = 'retryable' AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
+          status = ?
+          OR (status = ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
         )
       ORDER BY updated_at, input_path
       LIMIT ?
-    `).all(runId, now, limit).map((row) => mapJob(row as Record<string, unknown>));
+    `).all(runId, JOB_STATUS.pending, JOB_STATUS.retryable, now, limit).map((row) =>
+      mapJob(row as Record<string, unknown>)
+    );
   }
 
   findByInputPath(runId: string, inputPath: string): JobRecord | undefined {
@@ -110,14 +114,14 @@ export class JobStore {
   resetRunningJobs(runId: string, now: string): number {
     const changed = this.db.prepare(`
       UPDATE jobs
-      SET status = 'retryable',
+      SET status = ?,
           next_attempt_at = ?,
           last_error_type = 'interrupted',
           last_error_message = 'Execution interrupted before completion',
           updated_at = ?
       WHERE run_id = ?
-        AND status = 'running'
-    `).run(now, now, runId);
+        AND status = ?
+    `).run(JOB_STATUS.retryable, now, now, runId, JOB_STATUS.running);
 
     return Number(changed ?? 0);
   }

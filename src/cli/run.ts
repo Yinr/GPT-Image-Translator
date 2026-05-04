@@ -5,6 +5,7 @@ import { createImageAdapter } from "../adapters/factory.ts";
 import { planJobs } from "../queue/job-planner.ts";
 import { runQueue } from "../queue/queue-runner.ts";
 import { createLogger } from "../logging/logger.ts";
+import { ATTEMPT_STATUS, RUN_STATUS } from "../shared/status.ts";
 import { nowIso } from "../shared/time.ts";
 import type { AppConfig, JobStatus } from "../shared/types.ts";
 import { openDatabase } from "../storage/db.ts";
@@ -109,7 +110,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     if (!resumable) {
       runStore.create({
         id: runId,
-        status: "running",
+        status: RUN_STATUS.running,
         configHash,
         inputDir: options.config.inputDir,
         outputDir: options.config.outputDir,
@@ -158,7 +159,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     });
     if (runnableJobs === 0) {
       log(`No runnable jobs remain for run ${runId}. Marking run as completed.`);
-      runStore.updateStatus(runId, "completed", nowIso());
+      runStore.updateStatus(runId, RUN_STATUS.completed, nowIso());
       await logger.info("Run completed with no runnable jobs", { runId });
       return {
         runId,
@@ -238,7 +239,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       onJobFinish: async ({ job, result }) => {
         const duration = formatDuration(result.durationMs);
         const progress = formatProgress(jobStore.countByStatus(runId));
-        if (result.status === "succeeded") {
+        if (result.status === ATTEMPT_STATUS.succeeded) {
           log(`Completed ${progress} ${job.inputPath} in ${duration}`);
           await logger.info("Job completed", {
             runId,
@@ -251,7 +252,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
           return;
         }
 
-        if (result.status === "retryable") {
+        if (result.status === ATTEMPT_STATUS.retryable) {
           log(
             `Will retry ${progress} ${job.inputPath} after ${duration} [${
               result.errorType ?? "unknown"

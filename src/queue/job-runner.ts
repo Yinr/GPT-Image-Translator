@@ -1,12 +1,14 @@
 import { join, relative } from "@std/path";
 import type {
   AspectPadConfig,
+  AttemptStatus,
   ImageEditRequest,
   ImageEditResult,
   JobRecord,
   ProcessingMetadataRecord,
   RetryConfig,
 } from "../shared/types.ts";
+import { ATTEMPT_STATUS, JOB_STATUS } from "../shared/status.ts";
 import { cropApiOutputToOriginal, prepareAspectPaddedImage } from "../core/image-preprocessor.ts";
 import { withOutputFormat } from "../fs/output-path.ts";
 import { writeImageOutput } from "../fs/writer.ts";
@@ -42,7 +44,7 @@ export interface RunJobOptions {
 }
 
 export interface RunJobResult {
-  status: "succeeded" | "retryable" | "failed";
+  status: AttemptStatus;
   stopRun: boolean;
   durationMs: number;
   nextAttemptAt?: string;
@@ -82,7 +84,7 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
 
   options.jobStore.updateStatus({
     id: options.job.id,
-    status: "running",
+    status: JOB_STATUS.running,
     attempts: attemptNo,
     now: startedAt,
   });
@@ -153,14 +155,14 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
       id: crypto.randomUUID(),
       jobId: options.job.id,
       attemptNo,
-      status: "succeeded",
+      status: ATTEMPT_STATUS.succeeded,
       durationMs: durationMs(startedAt, finishedAt),
       startedAt,
       finishedAt,
     });
     options.jobStore.updateStatus({
       id: options.job.id,
-      status: "succeeded",
+      status: JOB_STATUS.succeeded,
       attempts: attemptNo,
       outputPath,
       now: finishedAt,
@@ -168,7 +170,7 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
     });
 
     return {
-      status: "succeeded",
+      status: ATTEMPT_STATUS.succeeded,
       stopRun: false,
       durationMs: durationMs(startedAt, finishedAt),
       outputPath,
@@ -177,7 +179,7 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
     const finishedAt = now();
     const apiError = normalizeError(error);
     const retryDecision = getRetryDecision(apiError.info, attemptNo, options.retry);
-    const status = retryDecision.shouldRetry ? "retryable" : "failed";
+    const status = retryDecision.shouldRetry ? ATTEMPT_STATUS.retryable : ATTEMPT_STATUS.failed;
     const nextAttemptAt = retryDecision.shouldRetry
       ? new Date(Date.parse(finishedAt) + retryDecision.delayMs).toISOString()
       : undefined;
@@ -203,7 +205,7 @@ export async function runJob(options: RunJobOptions): Promise<RunJobResult> {
       nextAttemptAt,
       lastErrorType: apiError.info.kind,
       lastErrorMessage: apiError.info.message,
-      completedAt: status === "failed" ? finishedAt : undefined,
+      completedAt: status === ATTEMPT_STATUS.failed ? finishedAt : undefined,
     });
 
     return {
