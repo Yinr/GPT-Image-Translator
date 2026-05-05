@@ -4,7 +4,7 @@ import { redactProxyUrl } from "../config/proxy.ts";
 export type FetchLike = typeof fetch;
 
 type CreateHttpClient = typeof Deno.createHttpClient;
-type DenoRequestInit = RequestInit & { client?: Deno.HttpClient };
+type FetchInit = Parameters<typeof fetch>[1];
 
 export interface HttpTransport {
   fetch: FetchLike;
@@ -33,7 +33,8 @@ export function createHttpTransport(
   }
 
   return {
-    fetch: ((input, init) => fetchImpl(input, { ...init, client } as DenoRequestInit)) as FetchLike,
+    fetch:
+      ((input, init) => fetchImpl(input, { ...init, client } satisfies FetchInit)) as FetchLike,
     close: () => client.close(),
   };
 }
