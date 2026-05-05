@@ -1,8 +1,8 @@
-import type { AppConfig } from "../shared/types.ts";
+import type { ResolvedConfig } from "../shared/types.ts";
 
 type PlainObject = Record<string, unknown>;
 
-export function normalizeProxyConfig(value: unknown): AppConfig["openai"]["proxy"] {
+export function normalizeProxyConfig(value: unknown): ResolvedConfig["openai"]["proxy"] {
   if (value === null || value === undefined) return { url: "" };
   if (typeof value === "string") return { url: normalizeProxyUrl(value) };
   if (isPlainObject(value)) return { url: normalizeProxyUrl(value.url) };

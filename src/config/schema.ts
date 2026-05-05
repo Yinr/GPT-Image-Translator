@@ -1,4 +1,4 @@
-import type { AppConfig } from "../shared/types.ts";
+import type { ResolvedConfig } from "../shared/types.ts";
 import { isValidProxyUrl } from "./proxy.ts";
 import {
   OPENAI_IMAGE_BACKGROUNDS,
@@ -11,7 +11,7 @@ const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 const ASPECT_PAD_FILLS = ["transparent", "white"] as const;
 const OPENAI_ADAPTERS = ["openai", "gpt2api", "pic2api"] as const;
 
-export function validateConfig(config: AppConfig): AppConfig {
+export function validateConfig(config: ResolvedConfig): ResolvedConfig {
   const errors: string[] = [];
 
   if (!Number.isInteger(config.configVersion) || config.configVersion < 0) {

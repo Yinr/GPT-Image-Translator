@@ -1,7 +1,8 @@
 import type { AttemptStatus, JobStatus, RunStatus } from "./status.ts";
 export type { AttemptStatus, JobStatus, RunStatus } from "./status.ts";
 
-export interface AppConfig {
+// Fully merged and normalized config consumed by runtime code.
+export interface ResolvedConfig {
   configVersion: number;
   inputDir: string;
   outputDir: string;

@@ -1,8 +1,8 @@
-import type { AppConfig } from "../shared/types.ts";
+import type { ResolvedConfig } from "../shared/types.ts";
 
 export const CURRENT_CONFIG_VERSION = 2;
 
-export const defaultConfig: AppConfig = {
+export const defaultConfig: ResolvedConfig = {
   configVersion: CURRENT_CONFIG_VERSION,
   inputDir: "./input",
   outputDir: "./output",

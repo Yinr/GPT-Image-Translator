@@ -1,6 +1,6 @@
-import { loadConfig } from "./config/load.ts";
-import { isConfigOutdated, upgradeConfigFile } from "./config/upgrade.ts";
+import { upgradeConfigFile } from "./config/upgrade.ts";
 import { CURRENT_CONFIG_VERSION } from "./config/defaults.ts";
+import { ProjectConfig } from "./config/project-config.ts";
 import { HELP_TEXT, parseCliArgs } from "./cli/args.ts";
 import { APP_NAME, APP_VERSION } from "./shared/app-meta.ts";
 import { execute, type ExecuteResult } from "./cli/run.ts";
@@ -69,8 +69,9 @@ export async function main(args: string[]): Promise<void> {
     return;
   }
 
-  const config = await loadConfig(configPath);
-  if (isConfigOutdated(config)) {
+  const projectConfig = await ProjectConfig.load(configPath);
+  const config = projectConfig.resolved;
+  if (projectConfig.isOutdated()) {
     console.warn(
       `Config version ${config.configVersion} is older than current version ${CURRENT_CONFIG_VERSION}. Run "${APP_NAME} config upgrade --config ${configPath}" to update it.`,
     );

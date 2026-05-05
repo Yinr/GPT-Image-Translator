@@ -7,7 +7,7 @@ import { runQueue } from "../queue/queue-runner.ts";
 import { createLogger } from "../logging/logger.ts";
 import { ATTEMPT_STATUS, RUN_STATUS } from "../shared/status.ts";
 import { nowIso } from "../shared/time.ts";
-import type { AppConfig, JobStatus } from "../shared/types.ts";
+import type { JobStatus, ResolvedConfig } from "../shared/types.ts";
 import { openDatabase } from "../storage/db.ts";
 import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
@@ -17,7 +17,7 @@ import { RunStore } from "../storage/run-store.ts";
 import type { ImageEditClientLike } from "../queue/job-runner.ts";
 
 export interface ExecuteOptions {
-  config: AppConfig;
+  config: ResolvedConfig;
   dryRun: boolean;
   log?: (message: string) => void;
   client?: ImageEditClientLike;
@@ -373,7 +373,7 @@ function formatProgress(counts: Record<JobStatus, number>): string {
   return `[${details.join(", ")}]`;
 }
 
-function shouldSkipExisting(outputPath: string, output: AppConfig["output"]): boolean {
+function shouldSkipExisting(outputPath: string, output: ResolvedConfig["output"]): boolean {
   if (output.overwrite) return false;
   if (!output.skipExisting) return false;
 

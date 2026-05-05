@@ -1,8 +1,7 @@
 import { parse, stringify } from "@std/yaml";
 import { CURRENT_CONFIG_VERSION, defaultConfig } from "./defaults.ts";
-import { normalizeConfig } from "./load.ts";
-import { validateConfig } from "./schema.ts";
-import type { AppConfig } from "../shared/types.ts";
+import { parseConfigDocument, ProjectConfig, readConfigDocumentVersion } from "./project-config.ts";
+import type { ResolvedConfig } from "../shared/types.ts";
 
 export interface UpgradeConfigOptions {
   dryRun?: boolean;
@@ -134,10 +133,10 @@ export function upgradeConfigText(
   text: string,
   options: Pick<UpgradeConfigOptions, "fullUpdate" | "allowDropComments"> = {},
 ): UpgradeConfigResult {
-  const parsed = parseConfigObject(text);
-  validateConfig(toAppConfig(parsed));
+  const parsed = parseConfigDocument(text);
+  ProjectConfig.fromParsedDocument(parsed);
 
-  const fromVersion = readConfigVersion(parsed);
+  const fromVersion = readConfigDocumentVersion(parsed);
   if (fromVersion > CURRENT_CONFIG_VERSION) {
     throw new Error(
       `Config version ${fromVersion} is newer than supported version ${CURRENT_CONFIG_VERSION}`,
@@ -177,8 +176,8 @@ export function upgradeConfigText(
   };
 }
 
-export function isConfigOutdated(config: AppConfig): boolean {
-  return config.configVersion < CURRENT_CONFIG_VERSION;
+export function isConfigOutdated(config: ResolvedConfig): boolean {
+  return ProjectConfig.fromResolvedConfig(config).isOutdated();
 }
 
 function fullUpdateConfig(
@@ -193,11 +192,9 @@ function fullUpdateConfig(
     );
   }
 
-  const merged = toAppConfig(parsed);
+  const merged = toResolvedConfig(parsed);
   merged.configVersion = CURRENT_CONFIG_VERSION;
-  validateConfig(merged);
-
-  const updatedText = stringify(stripUndefined(merged));
+  const updatedText = stringify(ProjectConfig.serializeResolvedConfig(merged));
   return {
     changed: updatedText !== text,
     fromVersion,
@@ -209,28 +206,8 @@ function fullUpdateConfig(
   };
 }
 
-function toAppConfig(parsed: Record<string, unknown>): AppConfig {
-  const merged = deepMerge(structuredClone(defaultConfig), parsed) as AppConfig;
-  if (!Object.hasOwn(parsed, "configVersion")) merged.configVersion = 0;
-  normalizeConfig(merged);
-  return merged;
-}
-
-function parseConfigObject(text: string): Record<string, unknown> {
-  const parsed = parse(text) as unknown;
-  if (!isPlainObject(parsed)) {
-    throw new Error("Config file must contain a YAML object");
-  }
-  return parsed;
-}
-
-function readConfigVersion(parsed: Record<string, unknown>): number {
-  if (!Object.hasOwn(parsed, "configVersion")) return 0;
-  const version = parsed.configVersion;
-  if (!Number.isInteger(version) || typeof version !== "number" || version < 0) {
-    throw new Error("configVersion must be a non-negative integer");
-  }
-  return version;
+function toResolvedConfig(parsed: Record<string, unknown>): ResolvedConfig {
+  return ProjectConfig.fromParsedDocument(parsed).resolved;
 }
 
 function prependBlock(text: string, block: string): string {
@@ -254,31 +231,4 @@ function appendBlocks(text: string, blocks: string[]): string {
 
 function hasComments(text: string): boolean {
   return text.split(/\r?\n/).some((line) => line.trimStart().startsWith("#"));
-}
-
-function deepMerge(base: unknown, override: unknown): unknown {
-  if (!isPlainObject(base) || !isPlainObject(override)) return override;
-
-  for (const [key, value] of Object.entries(override)) {
-    if (value === undefined) continue;
-    const current = base[key];
-    base[key] = isPlainObject(current) && isPlainObject(value) ? deepMerge(current, value) : value;
-  }
-
-  return base;
-}
-
-function stripUndefined<T>(value: T): T {
-  if (Array.isArray(value)) return value.map((item) => stripUndefined(item)) as T;
-  if (!isPlainObject(value)) return value;
-
-  const result: Record<string, unknown> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (item !== undefined) result[key] = stripUndefined(item);
-  }
-  return result as T;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
