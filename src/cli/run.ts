@@ -182,85 +182,106 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
 
     const ownedClient = options.client ? undefined : createImageAdapter(options.config.openai);
     const client = options.client ?? ownedClient!;
-    const summary = await runQueue({
-      runId,
-      prompt: options.config.prompt,
-      concurrency: options.config.queue.concurrency,
-      minDelayMs: options.config.queue.minDelayMs,
-      failFast: options.config.queue.failFast,
-      formatFromApi: options.config.output.formatFromApi,
-      outputDir: options.config.outputDir,
-      aspectPad: options.config.preprocess.aspectPad,
-      retry: options.config.retry,
-      client,
-      runStore,
-      jobStore,
-      attemptStore,
-      outputStore,
-      processingMetadataStore,
-      onJobStart: async ({ job, attemptNo }) => {
-        log(`Attempt ${attemptNo}: ${job.inputPath}`);
-        await logger.info("Job started", {
-          runId,
-          jobId: job.id,
-          attemptNo,
-          inputPath: job.inputPath,
-          outputPath: job.outputPath,
-        });
-      },
-      onPreprocessPrepared: async ({ job, metadata, preparedImagePath }) => {
-        log(
-          `Prepared ${job.inputPath} -> ${metadata.apiSize} padded=${metadata.canvasWidth}x${metadata.canvasHeight} cropBack=${
-            metadata.cropBackToOriginal ? "yes" : "no"
-          }`,
-        );
-        await logger.info("Image preprocessed", {
-          runId,
-          jobId: job.id,
-          inputPath: job.inputPath,
-          outputPath: job.outputPath,
-          apiSize: metadata.apiSize,
-          sourceWidth: metadata.sourceWidth,
-          sourceHeight: metadata.sourceHeight,
-          canvasWidth: metadata.canvasWidth,
-          canvasHeight: metadata.canvasHeight,
-          fill: metadata.fill,
-          cropBackToOriginal: metadata.cropBackToOriginal,
-          uncroppedOutputPath: metadata.uncroppedOutputPath,
-        });
-        await logger.debug("Image preprocessing details", {
-          runId,
-          jobId: job.id,
-          preparedImagePath,
-          sourceRectX: metadata.sourceRectX,
-          sourceRectY: metadata.sourceRectY,
-          sourceRectWidth: metadata.sourceRectWidth,
-          sourceRectHeight: metadata.sourceRectHeight,
-        });
-      },
-      onJobFinish: async ({ job, result }) => {
-        const duration = formatDuration(result.durationMs);
-        const progress = formatProgress(jobStore.countByStatus(runId));
-        if (result.status === ATTEMPT_STATUS.succeeded) {
-          log(`Completed ${progress} ${job.inputPath} in ${duration}`);
-          await logger.info("Job completed", {
+    let runError: unknown;
+    let summary: Awaited<ReturnType<typeof runQueue>>;
+    try {
+      summary = await runQueue({
+        runId,
+        prompt: options.config.prompt,
+        concurrency: options.config.queue.concurrency,
+        minDelayMs: options.config.queue.minDelayMs,
+        failFast: options.config.queue.failFast,
+        formatFromApi: options.config.output.formatFromApi,
+        outputDir: options.config.outputDir,
+        aspectPad: options.config.preprocess.aspectPad,
+        retry: options.config.retry,
+        client,
+        runStore,
+        jobStore,
+        attemptStore,
+        outputStore,
+        processingMetadataStore,
+        onJobStart: async ({ job, attemptNo }) => {
+          log(`Attempt ${attemptNo}: ${job.inputPath}`);
+          await logger.info("Job started", {
             runId,
             jobId: job.id,
-            progress,
+            attemptNo,
             inputPath: job.inputPath,
-            outputPath: result.outputPath ?? job.outputPath,
-            durationMs: result.durationMs,
+            outputPath: job.outputPath,
           });
-          return;
-        }
-
-        if (result.status === ATTEMPT_STATUS.retryable) {
+        },
+        onPreprocessPrepared: async ({ job, metadata, preparedImagePath }) => {
           log(
-            `Will retry ${progress} ${job.inputPath} after ${duration} [${
+            `Prepared ${job.inputPath} -> ${metadata.apiSize} padded=${metadata.canvasWidth}x${metadata.canvasHeight} cropBack=${
+              metadata.cropBackToOriginal ? "yes" : "no"
+            }`,
+          );
+          await logger.info("Image preprocessed", {
+            runId,
+            jobId: job.id,
+            inputPath: job.inputPath,
+            outputPath: job.outputPath,
+            apiSize: metadata.apiSize,
+            sourceWidth: metadata.sourceWidth,
+            sourceHeight: metadata.sourceHeight,
+            canvasWidth: metadata.canvasWidth,
+            canvasHeight: metadata.canvasHeight,
+            fill: metadata.fill,
+            cropBackToOriginal: metadata.cropBackToOriginal,
+            uncroppedOutputPath: metadata.uncroppedOutputPath,
+          });
+          await logger.debug("Image preprocessing details", {
+            runId,
+            jobId: job.id,
+            preparedImagePath,
+            sourceRectX: metadata.sourceRectX,
+            sourceRectY: metadata.sourceRectY,
+            sourceRectWidth: metadata.sourceRectWidth,
+            sourceRectHeight: metadata.sourceRectHeight,
+          });
+        },
+        onJobFinish: async ({ job, result }) => {
+          const duration = formatDuration(result.durationMs);
+          const progress = formatProgress(jobStore.countByStatus(runId));
+          if (result.status === ATTEMPT_STATUS.succeeded) {
+            log(`Completed ${progress} ${job.inputPath} in ${duration}`);
+            await logger.info("Job completed", {
+              runId,
+              jobId: job.id,
+              progress,
+              inputPath: job.inputPath,
+              outputPath: result.outputPath ?? job.outputPath,
+              durationMs: result.durationMs,
+            });
+            return;
+          }
+
+          if (result.status === ATTEMPT_STATUS.retryable) {
+            log(
+              `Will retry ${progress} ${job.inputPath} after ${duration} [${
+                result.errorType ?? "unknown"
+              }] ${result.errorMessage ?? ""}`.trim(),
+            );
+            await logger.warn("Job scheduled for retry", {
+              runId,
+              jobId: job.id,
+              progress,
+              inputPath: job.inputPath,
+              durationMs: result.durationMs,
+              errorType: result.errorType,
+              errorMessage: result.errorMessage,
+              nextAttemptAt: result.nextAttemptAt,
+            });
+            return;
+          }
+
+          log(
+            `Failed ${progress} ${job.inputPath} after ${duration} [${
               result.errorType ?? "unknown"
             }] ${result.errorMessage ?? ""}`.trim(),
           );
-          await logger.warn("Job scheduled for retry", {
+          await logger.error("Job failed", {
             runId,
             jobId: job.id,
             progress,
@@ -268,35 +289,26 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
             durationMs: result.durationMs,
             errorType: result.errorType,
             errorMessage: result.errorMessage,
-            nextAttemptAt: result.nextAttemptAt,
           });
-          return;
-        }
+        },
+        onCooldown: async ({ delayMs, until, reason }) => {
+          log(`Cooling down for ${formatDuration(delayMs)} until ${until} [${reason}]`);
+          await logger.warn("Run cooldown started", { runId, delayMs, until, reason });
+        },
+        stopRequested: options.stopRequested,
+        maxSuccess: options.maxSuccess,
+      });
+    } catch (error) {
+      runError = error;
+      throw error;
+    } finally {
+      try {
+        ownedClient?.close?.();
+      } catch (closeError) {
+        if (runError === undefined) throw closeError;
+      }
+    }
 
-        log(
-          `Failed ${progress} ${job.inputPath} after ${duration} [${
-            result.errorType ?? "unknown"
-          }] ${result.errorMessage ?? ""}`.trim(),
-        );
-        await logger.error("Job failed", {
-          runId,
-          jobId: job.id,
-          progress,
-          inputPath: job.inputPath,
-          durationMs: result.durationMs,
-          errorType: result.errorType,
-          errorMessage: result.errorMessage,
-        });
-      },
-      onCooldown: async ({ delayMs, until, reason }) => {
-        log(`Cooling down for ${formatDuration(delayMs)} until ${until} [${reason}]`);
-        await logger.warn("Run cooldown started", { runId, delayMs, until, reason });
-      },
-      stopRequested: options.stopRequested,
-      maxSuccess: options.maxSuccess,
-    }).finally(() => {
-      ownedClient?.close?.();
-    });
     const counts = jobStore.countByStatus(runId);
     const failedJobs = jobStore.listFailedByRun(runId).map((job) => ({
       inputPath: job.inputPath,
