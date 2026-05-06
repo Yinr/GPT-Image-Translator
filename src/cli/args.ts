@@ -4,6 +4,7 @@ import { APP_DISPLAY_NAME, APP_NAME } from "../shared/app-meta.ts";
 export interface CliArgs {
   command: "translate" | "status" | "inspect" | "failed" | "config-upgrade" | "version";
   config?: string;
+  db?: string;
   dryRun: boolean;
   help: boolean;
   version: boolean;
@@ -21,10 +22,11 @@ export const HELP_TEXT = `${APP_DISPLAY_NAME}
 Usage:
   ${APP_NAME} --version
   ${APP_NAME} version
-  ${APP_NAME} --config <path> [--dry-run] [--max-success <n>]
-  ${APP_NAME} status --config <path> [--limit <n>]
-  ${APP_NAME} inspect --config <path> --run <runId>
-  ${APP_NAME} failed --config <path> --run <runId>
+  ${APP_NAME} --config <path> [--db <path>] [--dry-run] [--max-success <n>]
+  ${APP_NAME} translate --run <runId> [--db <path>] [--max-success <n>]
+  ${APP_NAME} status [--config <path>] [--db <path>] [--limit <n>]
+  ${APP_NAME} inspect [--config <path>] [--db <path>] --run <runId>
+  ${APP_NAME} failed [--config <path>] [--db <path>] --run <runId>
   ${APP_NAME} config upgrade --config <path> [--dry-run] [--full-update]
 
 Commands:
@@ -37,10 +39,11 @@ Commands:
 
 Options:
   -c, --config <path>  配置文件路径
+      --db <path>      临时覆盖 SQLite 状态数据库路径，默认 ./data.db
       --version        显示程序版本
       --dry-run        只扫描和规划，不实际请求 API
       --max-success <n>  成功完成 n 个新图片任务后停止继续调度
-  -r, --run <runId>    inspect / failed 使用的批次 id（run id）
+  -r, --run <runId>    恢复或查询的批次 id（run id）
       --limit <n>      status 返回的最近批次（runs）数量，默认 20
       --full-update    完整重写配置为最新结构，会丢弃原格式和注释
       --allow-drop-comments  允许 full-update 重写包含注释的配置文件
@@ -50,9 +53,11 @@ Examples:
   ${APP_NAME} --version
   ${APP_NAME} version
   ${APP_NAME} --config ./config.yaml
+  ${APP_NAME} --config ./config.yaml --db ./data.db
   ${APP_NAME} --config ./config.yaml --dry-run
   ${APP_NAME} --config ./config.yaml --max-success 5
-  ${APP_NAME} status --config ./config.yaml --limit 10
+  ${APP_NAME} translate --run run_123 --db ./data.db
+  ${APP_NAME} status --db ./data.db --limit 10
   ${APP_NAME} inspect --config ./config.yaml --run run_123
   ${APP_NAME} config upgrade --config ./config.yaml --dry-run
   ${APP_NAME} config upgrade --config ./config.yaml --full-update --allow-drop-comments`;
@@ -68,7 +73,7 @@ export function parseCliArgs(args: string[]): CliArgs {
     : args;
   const parsed = parseArgs(rest, {
     boolean: ["dry-run", "help", "version", "full-update", "allow-drop-comments"],
-    string: ["config", "run", "max-success"],
+    string: ["config", "db", "run", "max-success"],
     alias: { config: "c", run: "r", help: "h" },
     default: {
       "dry-run": false,
@@ -86,10 +91,14 @@ export function parseCliArgs(args: string[]): CliArgs {
   if (maxSuccess !== undefined && (!Number.isInteger(maxSuccess) || maxSuccess <= 0)) {
     throw new Error("--max-success must be a positive integer");
   }
+  if (typeof parsed.db === "string" && !parsed.db.trim()) {
+    throw new Error("--db must not be empty");
+  }
 
   return {
     command: parsed.version ? "version" : command,
     config: parsed.config,
+    db: parsed.db,
     dryRun: parsed["dry-run"],
     help: parsed.help,
     version: parsed.version,

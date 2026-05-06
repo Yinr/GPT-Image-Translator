@@ -64,8 +64,10 @@ openai:
 
 # 翻译提示词：每张图片都会使用这个 prompt
 prompt: |
-  Translate all text in the image to Simplified Chinese while preserving
-  the original layout, visual composition, typography style, and image content.
+  Translate all text in the image to Simplified Chinese while preserving the original layout, visual composition, typography style, and image content.
+  Make sure the translated text fits naturally within the image, maintaining the same font style, size, and color as the original.
+  Also check the translated text for any grammatical errors or awkward phrasing, and correct them to ensure the final image looks polished and professional.
+  Do not crop original image, extend image with transparent background if needed.
 
 # 扫描配置
 scan:
@@ -122,8 +124,9 @@ retry:
 
 # 本地状态存储配置
 storage:
-  # SQLite 数据库路径，用于记录 runs/jobs/attempts/outputs，支持断点续跑和查询
-  sqlitePath: ./state/translator.db
+  # SQLite 数据库路径，用于记录 runs/jobs/attempts/outputs，支持断点续跑和查询。
+  # 命令行可用 --db <path> 临时覆盖。
+  sqlitePath: ./data.db
 
 # 图片预处理配置。默认关闭，保持原图直接提交给接口
 preprocess:

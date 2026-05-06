@@ -90,8 +90,10 @@ openai:
   model: gpt-image-2
 
 prompt: |
-  Translate all text in the image to Simplified Chinese while preserving
-  the original layout, visual composition, typography style, and image content.
+  Translate all text in the image to Simplified Chinese while preserving the original layout, visual composition, typography style, and image content.
+  Make sure the translated text fits naturally within the image, maintaining the same font style, size, and color as the original.
+  Also check the translated text for any grammatical errors or awkward phrasing, and correct them to ensure the final image looks polished and professional.
+  Do not crop original image, extend image with transparent background if needed.
 ```
 
 设置环境变量：
@@ -134,6 +136,12 @@ gpt-image-translator --config ./config.yaml --dry-run
 # 执行翻译
 gpt-image-translator --config ./config.yaml
 
+# 临时指定 SQLite 状态数据库
+gpt-image-translator --config ./config.yaml --db ./data.db
+
+# 从 SQLite 中保存的 run config snapshot 恢复指定批次
+gpt-image-translator translate --run <runId> --db ./data.db
+
 # 只做小批量验证
 gpt-image-translator --config ./config.yaml --max-success 5
 ```
@@ -158,10 +166,22 @@ gpt-image-translator --config ./config.yaml
 gpt-image-translator --config ./config.yaml --max-success 5
 ```
 
+恢复仍处于 `running` 状态的指定批次（run）：
+
+```bash
+gpt-image-translator translate --run <runId> --db ./data.db
+```
+
+显式恢复会从 SQLite
+中保存的脱敏配置快照读取输入目录、输出目录、prompt、扫描规则和运行参数。本阶段不支持
+`translate --run <runId> --config <path>` 覆盖快照；如果快照没有明文 API key，请确保对应的
+`openai.apiKeyEnv` 环境变量可用。
+
 查看最近批次（runs）：
 
 ```bash
 gpt-image-translator status --config ./config.yaml --limit 10
+gpt-image-translator status --db ./data.db --limit 10
 ```
 
 查看指定批次（run）详情：

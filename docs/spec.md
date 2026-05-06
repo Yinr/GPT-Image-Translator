@@ -131,8 +131,10 @@ openai:
   model: gpt-image-2
 
 prompt: |
-  Translate all text in the image to Simplified Chinese while preserving
-  the original layout, visual composition, typography style, and image content.
+  Translate all text in the image to Simplified Chinese while preserving the original layout, visual composition, typography style, and image content.
+  Make sure the translated text fits naturally within the image, maintaining the same font style, size, and color as the original.
+  Also check the translated text for any grammatical errors or awkward phrasing, and correct them to ensure the final image looks polished and professional.
+  Do not crop original image, extend image with transparent background if needed.
 
 scan:
   recursive: true
@@ -160,7 +162,7 @@ retry:
   backoffFactor: 2
 
 storage:
-  sqlitePath: ./state/translator.db
+  sqlitePath: ./data.db
 
 preprocess:
   aspectPad:
@@ -183,6 +185,7 @@ logging:
 - `openai.adapter` 用于选择 adapter 实现
 - 当前支持的 adapter 值为 `openai`、`gpt2api`、`pic2api`
 - provider 级建模应在后续单独引入，而不是直接复用 adapter 选择语义
+- `storage.sqlitePath` 默认是 `./data.db`；命令行 `--db <path>` 可临时覆盖本次使用的 SQLite 状态库
 
 `openai.userAgent` 规则：
 
@@ -244,6 +247,40 @@ logging:
   -> 写入输出字节
   -> 持久化状态、尝试记录和元数据
 ```
+
+自动续跑身份：
+
+- `queue.resume: true` 时，CLI 会用当前 `loaded config` 计算 `run hash`，并查找最新的 matching
+  `running` run
+- 当前 `run hash` 只纳入 `inputDir`、`outputDir`、`prompt` 和 `scan`
+- `openai.*`、`queue.*`、`retry.*`、`logging.*`、`storage.sqlitePath`、`preprocess.*` 和 `output.*`
+  不参与自动续跑身份判断
+- 不参与身份判断的配置变更会影响本次 invocation 后续未完成任务的执行方式，但不会阻止续跑同一个 run
+- SQLite 中使用 `runs.run_hash` 持久化该值，代码和查询 DTO 使用 `runHash` 表达同一语义
+
+显式续跑设计：
+
+- `translate --run <runId>` 支持从 SQLite 中的 `run config snapshot` 恢复执行，即使原配置文件已丢失
+- `translate --run <runId> --db <path>` 可显式指定用于恢复的 SQLite 数据库；未指定时使用默认
+  `./data.db`
+- `run config snapshot` 保存创建 run 时的脱敏 `loaded config`，持久化在
+  `run_configs(run_id, config_version, config_json, created_at)`
+- snapshot 不得明文保存 `openai.apiKey`；可保存 `openai.apiKeyEnv`，若恢复时没有可用
+  key，必须要求用户通过环境变量或覆盖配置重新提供
+- 当前 `translate --run <runId> --config <path>` 尚未开放；未来其中的配置文件应作为 snapshot
+  的覆盖配置，而不是完整基础配置
+- 当前显式续跑只允许恢复 `running` run，并校验 snapshot 计算出的 `runHash` 与 `runs.run_hash` 一致
+- 显式续跑默认仍以 `runHash` 作为安全边界；覆盖配置修改 `inputDir`、`outputDir`、`prompt` 或 `scan`
+  时应拒绝执行
+- 未来可设计显式 identity override
+  通道，用于输入/输出路径整体移动等特殊恢复场景；该能力必须有明确参数和风险提示，不应由普通 `--run`
+  隐式启用
+
+可选配置标签设计：
+
+- 未来可增加 `config.name` 作为人类可读标签，用于 query、Web UI、多配置检索和操作员记忆
+- `config.name` 不参与 `runHash`，不影响 job planning、API 请求或自动续跑匹配
+- `config.name` 不应作为唯一标识；真正的批次标识仍是 `runId`
 
 成功上限行为：
 
@@ -383,6 +420,8 @@ preprocess:
 - 总是：写文件前先解码 `data[0].b64_json`
 - 总是：当 `output.formatFromApi` 开启时，以响应 `output_format` 决定最终扩展名
 - 总是：当 `output.formatFromApi` 关闭时，保留配置中的规划扩展名
+- 总是：自动续跑身份由 `inputDir`、`outputDir`、`prompt` 和 `scan` 决定，不因 API
+  key、代理、并发、重试或日志配置变化而切换 run
 - 总是：通用基础设施优先使用 Deno 标准库或成熟 Deno 依赖
 - 总是：优先使用 JSR 依赖，例外情况应记录到规格或任务文档
 - 需要先确认：引入 Web 框架、更换 SQLite、接入外部队列服务
@@ -397,6 +436,7 @@ preprocess:
 - 瞬时失败能按退避策略重试
 - 认证与权限错误能以清晰错误中止批次
 - 中断后的批次能续跑且不重复处理已完成输出
+- API key、代理、并发、重试或日志配置变化后，仍能续跑同一批次的未完成任务
 - 核心队列与存储逻辑可被未来 Web UI 复用
 
 ## 未来架构考虑

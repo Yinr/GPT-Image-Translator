@@ -357,7 +357,7 @@ function createContext() {
   runs.create({
     id: "run-1",
     status: "running",
-    configHash: "hash",
+    runHash: "hash",
     inputDir: "/input",
     outputDir: "/output",
     startedAt: "2026-05-01T00:00:00.000Z",

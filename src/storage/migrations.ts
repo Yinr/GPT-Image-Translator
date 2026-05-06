@@ -101,4 +101,18 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_processing_metadata_job_id ON processing_metadata(job_id);
     `,
   },
+  {
+    version: 3,
+    sql: `
+      ALTER TABLE runs RENAME COLUMN config_hash TO run_hash;
+
+      CREATE TABLE run_configs (
+        run_id TEXT PRIMARY KEY,
+        config_version INTEGER NOT NULL,
+        config_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(run_id) REFERENCES runs(id) ON DELETE CASCADE
+      );
+    `,
+  },
 ];

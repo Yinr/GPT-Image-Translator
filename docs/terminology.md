@@ -6,7 +6,9 @@
 
 - `config file`（配置文件）：磁盘上的 YAML 配置文件。
 - `loaded config`（已加载配置）：程序实际执行时使用的最终配置，等于 defaults、YAML 和 CLI 参数合并后的结果。
-- `config hash`（配置哈希）：基于当前 `loaded config` 计算出的哈希；当前自动续跑规则使用它匹配可续跑批次。
+- `run identity`（批次身份）：用于判断两次执行是否属于同一个可续跑批次的稳定输入集合。
+- `run hash`（批次哈希）：基于 `run identity` 计算出的哈希；当前自动续跑规则使用它匹配可续跑批次，SQLite 中对应 `runs.run_hash`。
+- `run config snapshot`（批次配置快照）：创建 run 时保存的脱敏 `loaded config` 快照，用于未来在原配置文件丢失时按 run id 恢复执行。
 - `config version`（配置版本）：配置 schema 版本号，用于校验与显式升级。
 
 ## 执行术语
@@ -54,7 +56,7 @@
 - 执行层级固定为 `run > job > attempt`。
 - 中文对外文案推荐使用 `批次 > 图片任务 > 尝试`。
 - `provider` 与 `adapter` 分别对应运营/账号归属层与接口协议接入层。
-- `config file` 与 `loaded config` 必须严格区分，讨论 hash、resume、匹配规则时不能混用。
+- `config file`、`loaded config` 与 `run identity` 必须严格区分，讨论 hash、resume、匹配规则时不能混用。
 - 当前配置中的 `openai.adapter` 字段承载 adapter 选择；`openai`、`gpt2api`、`pic2api` 是当前支持的 adapter 标识。
 
 ## 生命周期
@@ -78,10 +80,10 @@ flowchart TD
 ```mermaid
 flowchart TD
   A[config file\n配置文件] --> B[loaded config\n已加载配置]
-  B --> C[config hash\n配置哈希]
+  B --> C[run hash\n批次哈希]
   C --> D[latest matching running run\n最新匹配的 running 批次]
   D --> E[resume that run\n续跑该批次]
 
-  B --> F[future task fingerprint / resume identity\n未来任务指纹 / 续跑身份]
+  B --> F[future task fingerprint\n未来任务指纹]
   F --> G[matching resumable run\n匹配的可续跑批次]
 ```

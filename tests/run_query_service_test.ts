@@ -21,7 +21,7 @@ Deno.test("RunQueryService returns run details with jobs, attempts, and outputs"
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -113,7 +113,7 @@ Deno.test("RunQueryService returns job details and filtered job lists", () => {
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -160,7 +160,7 @@ Deno.test("RunQueryService lists recent runs", () => {
     runs.create({
       id: "run-1",
       status: "completed",
-      configHash: "hash-1",
+      runHash: "hash-1",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: "2026-05-01T00:00:00.000Z",
@@ -172,7 +172,7 @@ Deno.test("RunQueryService lists recent runs", () => {
     runs.create({
       id: "run-2",
       status: "running",
-      configHash: "hash-2",
+      runHash: "hash-2",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: "2026-05-02T00:00:00.000Z",

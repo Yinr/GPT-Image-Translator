@@ -25,6 +25,12 @@
 - adapter 架构与 `openai` / `gpt2api` / `pic2api` 接入
 - `--max-success` 批次执行上限
 - `@matmen/imagescript` wasm 本地缓存包装
+- 续跑身份已收敛为 `runHash`，只纳入 `inputDir`、`outputDir`、`prompt` 和 `scan`
+- SQLite schema 已包含 `runs.run_hash` 与脱敏 `run_configs` 快照
+- 默认 SQLite 路径为 `./data.db`，CLI 支持 `--db <path>` 临时覆盖
+- 查询命令可通过 `--db` 在无配置文件时读取状态库
+- `translate --run <runId>` 可从 SQLite 中的 run config snapshot 恢复 `running` run
+- 请求代理配置、adapter transport 生命周期和 adapter 内部兼容边界已收敛
 
 详细行为定义见：
 
@@ -34,94 +40,18 @@
 
 ## 高优先级
 
-### A1. 收敛共享常量与状态元数据
-
-目标：收敛重复的状态字符串、配置选项枚举和 CLI / query 展示映射，减少重复定义。
-
-完成标准：
-
-- `run` / `job` / `attempt` 状态有单一权威定义
-- 用户可见状态汇总保持现有行为
-- CLI 格式化逻辑不泄漏到 `storage` / `queue` 模块
-
-验证：
-
-- `deno task check`
-- `deno task test`
-
-### A2. 收紧查询服务边界
-
-目标：进一步明确 `RunQueryService` 与底层 SQLite row shape 的边界，确保未来 Web UI 直接依赖稳定 DTO，而不是数据库细节。
-
-完成标准：
-
-- Query service 返回稳定 typed DTO
-- CLI query commands 只负责格式化 query 结果
-- Row mapper 仍保持为 storage 内部实现细节
-
-验证：
-
-- `deno test tests/run_query_service_test.ts tests/query_commands_test.ts`
-- `deno task check`
-
-### A4. 收敛续跑身份与配置命名
-
-目标：收敛当前续跑匹配规则，为后续显式 resume 和配置命名能力打基础。
-
-完成标准：
-
-- 明确哪些 `loaded config` 字段属于 `config hash`
-- 定义未来任务指纹 / 续跑身份与 `config hash` 的关系
-- 设计可选 `config.name`
-- 评估显式 `translate --run <runId>` 的最小安全实现边界
-
-验证：
-
-- `docs/spec.md`
-- `docs/tasks.md`
-
-### A5. 增加代理配置
-
-目标：为当前 API 接入层增加可选代理配置，并为未来多 provider / 多 key 场景保留扩展空间。
-
-完成标准：
-
-- 请求可通过配置代理发送
-- 代理配置可校验并有文档说明
-- 代理 URL 中的敏感信息不会进入日志与错误输出
-- 测试覆盖代理选项构造，不依赖真实代理服务
-
-验证：
-
-- `deno test tests/openai_client_test.ts tests/config_test.ts`
-- `deno task check`
-
-### A6. 继续收口适配器边界
-
-目标：继续把 adapter 特有的请求/响应兼容逻辑从 `queue`、CLI 和共享 helper 中收敛到
-`src/adapters/` 边界内。
-
-完成标准：
-
-- `queue` 和 CLI 只依赖共享 adapter 接口
-- provider / adapter 差异不再继续泄漏到调度层
-- 新增兼容分支优先落在对应 adapter 内部
-
-验证：
-
-- `deno task check`
-- `deno task test`
+当前无必须在本分支继续完成的高优先级任务。新的功能扩展应另开分支，并先同步规格。
 
 ## 中优先级
 
 ### 配置与续跑身份
 
 - 增加可选 `config.name`，用于配置检索、列出与操作员记忆
-- 梳理 `config hash` 的纳入字段
 - 设计可容忍兼容 provider / adapter / API key 变化的任务指纹 / 续跑身份
-- 设计不依赖完整 `config hash` 的显式 resume-by-run-id
+- 为 `translate --run <runId> --config <path>` 设计 snapshot override 合并规则
+- 设计显式 identity override 通道，用于输入/输出路径整体迁移等特殊恢复场景
 - 设计更严格的输入清单与 changed-input reconciliation 机制
-- 明确是否允许仅依赖持久化 run metadata 实现无配置路径的续跑定位
+- 评估是否允许通过显式参数恢复 `completed` / `failed` run
 
 ### 适配器与 API 演进
 

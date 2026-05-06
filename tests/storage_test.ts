@@ -1,6 +1,8 @@
 import { assertEquals, assertExists } from "@std/assert";
-import { openMemoryDatabase } from "../src/storage/db.ts";
+import { Database } from "@db/sqlite";
+import { openDatabase, openMemoryDatabase } from "../src/storage/db.ts";
 import { RunStore } from "../src/storage/run-store.ts";
+import { RunConfigStore } from "../src/storage/run-config-store.ts";
 import { JobStore } from "../src/storage/job-store.ts";
 import { AttemptStore } from "../src/storage/attempt-store.ts";
 import { OutputStore } from "../src/storage/output-store.ts";
@@ -18,7 +20,7 @@ Deno.test("stores create runs, jobs, and attempts", () => {
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -88,14 +90,14 @@ Deno.test("stores create runs, jobs, and attempts", () => {
   }
 });
 
-Deno.test("RunStore finds resumable running run by config hash", () => {
+Deno.test("RunStore finds resumable running run by run hash", () => {
   const db = openMemoryDatabase();
   try {
     const runs = new RunStore(db);
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: "2026-05-01T00:00:00.000Z",
@@ -114,6 +116,109 @@ Deno.test("RunStore finds resumable running run by config hash", () => {
   }
 });
 
+Deno.test("RunConfigStore creates, reads, and cascades run config snapshots", () => {
+  const db = openMemoryDatabase();
+  try {
+    const runs = new RunStore(db);
+    const runConfigs = new RunConfigStore(db);
+    const now = "2026-05-01T00:00:00.000Z";
+
+    runs.create({
+      id: "run-1",
+      status: "running",
+      runHash: "hash",
+      inputDir: "/input",
+      outputDir: "/output",
+      startedAt: now,
+      totalJobs: 0,
+      succeededJobs: 0,
+      failedJobs: 0,
+      skippedJobs: 0,
+    });
+    runConfigs.create({
+      runId: "run-1",
+      configVersion: 2,
+      configJson: '{"prompt":"translate"}',
+      createdAt: now,
+    });
+
+    assertEquals(runConfigs.get("run-1"), {
+      runId: "run-1",
+      configVersion: 2,
+      configJson: '{"prompt":"translate"}',
+      createdAt: now,
+    });
+
+    db.prepare("DELETE FROM runs WHERE id = ?").run("run-1");
+    assertEquals(runConfigs.get("run-1"), undefined);
+  } finally {
+    db.close();
+  }
+});
+
+Deno.test("openDatabase migrates legacy config_hash column and creates run_configs", async () => {
+  const dir = await Deno.makeTempDir();
+  const sqlitePath = `${dir}/translator.db`;
+  const legacyDb = new Database(sqlitePath);
+  try {
+    legacyDb.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      );
+      INSERT INTO schema_migrations (version, applied_at)
+      VALUES (1, '2026-05-01T00:00:00.000Z'), (2, '2026-05-01T00:00:00.000Z');
+
+      CREATE TABLE runs (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        config_hash TEXT NOT NULL,
+        input_dir TEXT NOT NULL,
+        output_dir TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        total_jobs INTEGER NOT NULL DEFAULT 0,
+        succeeded_jobs INTEGER NOT NULL DEFAULT 0,
+        failed_jobs INTEGER NOT NULL DEFAULT 0,
+        skipped_jobs INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO runs (
+        id, status, config_hash, input_dir, output_dir, started_at,
+        total_jobs, succeeded_jobs, failed_jobs, skipped_jobs
+      ) VALUES (
+        'run-1', 'running', 'legacy-hash', '/input', '/output', '2026-05-01T00:00:00.000Z',
+        0, 0, 0, 0
+      );
+    `);
+  } finally {
+    legacyDb.close();
+  }
+
+  const db = await openDatabase(sqlitePath);
+  try {
+    const columns = db.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
+    const runConfigColumns = db.prepare("PRAGMA table_info(run_configs)").all() as Array<
+      { name: string }
+    >;
+    const runs = new RunStore(db);
+    const runConfigs = new RunConfigStore(db);
+
+    assertEquals(columns.some((column) => column.name === "run_hash"), true);
+    assertEquals(columns.some((column) => column.name === "config_hash"), false);
+    assertEquals(runConfigColumns.map((column) => column.name), [
+      "run_id",
+      "config_version",
+      "config_json",
+      "created_at",
+    ]);
+    assertEquals(runs.get("run-1")?.runHash, "legacy-hash");
+    assertEquals(runs.findResumable("legacy-hash")?.id, "run-1");
+    assertEquals(runConfigs.get("run-1"), undefined);
+  } finally {
+    db.close();
+  }
+});
+
 Deno.test("JobStore resetRunningJobs converts running jobs to retryable", () => {
   const db = openMemoryDatabase();
   try {
@@ -124,7 +229,7 @@ Deno.test("JobStore resetRunningJobs converts running jobs to retryable", () => 
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -158,7 +263,7 @@ Deno.test("JobStore listFailedByRun returns failed jobs only", () => {
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -200,7 +305,7 @@ Deno.test("ProcessingMetadataStore creates and reads preprocessing metadata", ()
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,

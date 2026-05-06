@@ -1,10 +1,11 @@
 import { mapOutputPath } from "../core/path-map.ts";
-import { createConfigHash, createRunId } from "../core/run-id.ts";
+import { createRunHash, createRunId } from "../core/run-id.ts";
 import { scanImages } from "../core/scanner.ts";
 import { createImageAdapter } from "../adapters/factory.ts";
 import { planJobs } from "../queue/job-planner.ts";
 import { runQueue } from "../queue/queue-runner.ts";
 import { createLogger } from "../logging/logger.ts";
+import { createRunConfigSnapshot } from "../config/snapshot.ts";
 import { ATTEMPT_STATUS, RUN_STATUS } from "../shared/status.ts";
 import { nowIso } from "../shared/time.ts";
 import type { JobStatus, ResolvedConfig } from "../shared/types.ts";
@@ -13,6 +14,7 @@ import { AttemptStore } from "../storage/attempt-store.ts";
 import { JobStore } from "../storage/job-store.ts";
 import { OutputStore } from "../storage/output-store.ts";
 import { ProcessingMetadataStore } from "../storage/processing-metadata-store.ts";
+import { RunConfigStore } from "../storage/run-config-store.ts";
 import { RunStore } from "../storage/run-store.ts";
 import type { ImageEditClientLike } from "../queue/job-runner.ts";
 
@@ -23,6 +25,7 @@ export interface ExecuteOptions {
   client?: ImageEditClientLike;
   stopRequested?: () => boolean;
   maxSuccess?: number;
+  resumeRunId?: string;
 }
 
 export interface ExecuteResult {
@@ -67,16 +70,30 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
     const attemptStore = new AttemptStore(db);
     const outputStore = new OutputStore(db);
     const processingMetadataStore = new ProcessingMetadataStore(db);
+    const runConfigStore = new RunConfigStore(db);
 
-    const configHash = await createConfigHash(options.config);
-    const resumable = options.config.queue.resume ? runStore.findResumable(configHash) : undefined;
+    const runHash = await createRunHash(options.config);
+    const resumable = options.resumeRunId
+      ? runStore.get(options.resumeRunId)
+      : options.config.queue.resume
+      ? runStore.findResumable(runHash)
+      : undefined;
+    if (options.resumeRunId && !resumable) {
+      throw new Error(`Run not found: ${options.resumeRunId}`);
+    }
+    if (options.resumeRunId && resumable?.status !== RUN_STATUS.running) {
+      throw new Error(`Run ${options.resumeRunId} is not resumable: status=${resumable?.status}`);
+    }
+    if (options.resumeRunId && resumable?.runHash !== runHash) {
+      throw new Error(`Run ${options.resumeRunId} does not match restored config identity`);
+    }
     const runId = resumable?.id ?? createRunId();
     const resumed = Boolean(resumable);
     const logger = createLogger({ config: options.config.logging, runId });
     const runMode = resumed
-      ? "resuming matching running run"
+      ? options.resumeRunId ? "resuming explicit run" : "resuming matching running run"
       : options.config.queue.resume
-      ? "starting new run; no matching running run for current loaded config"
+      ? "starting new run; no matching running run for current run identity"
       : "starting new run; resume disabled";
     log(
       `${
@@ -111,7 +128,7 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
       runStore.create({
         id: runId,
         status: RUN_STATUS.running,
-        configHash,
+        runHash,
         inputDir: options.config.inputDir,
         outputDir: options.config.outputDir,
         startedAt,
@@ -119,6 +136,13 @@ export async function execute(options: ExecuteOptions): Promise<ExecuteResult> {
         succeededJobs: 0,
         failedJobs: 0,
         skippedJobs: 0,
+      });
+      const snapshot = createRunConfigSnapshot(options.config);
+      runConfigStore.create({
+        runId,
+        configVersion: snapshot.configVersion,
+        configJson: JSON.stringify(snapshot),
+        createdAt: startedAt,
       });
     } else {
       const resetJobs = jobStore.resetRunningJobs(runId, startedAt);

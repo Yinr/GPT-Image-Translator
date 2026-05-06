@@ -17,7 +17,7 @@ import { RunStore } from "../storage/run-store.ts";
 export interface RunSummary {
   id: string;
   status: RunStatus;
-  configHash: string;
+  runHash: string;
   inputDir: string;
   outputDir: string;
   startedAt: string;
@@ -172,7 +172,7 @@ function toRunSummary(run: RunRecord): RunSummary {
   return {
     id: run.id,
     status: run.status,
-    configHash: run.configHash,
+    runHash: run.runHash,
     inputDir: run.inputDir,
     outputDir: run.outputDir,
     startedAt: run.startedAt,

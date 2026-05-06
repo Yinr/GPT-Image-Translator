@@ -9,13 +9,13 @@ export class RunStore {
   create(record: RunRecord): void {
     this.db.prepare(`
       INSERT INTO runs (
-        id, status, config_hash, input_dir, output_dir, started_at, finished_at,
+        id, status, run_hash, input_dir, output_dir, started_at, finished_at,
         total_jobs, succeeded_jobs, failed_jobs, skipped_jobs
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       record.id,
       record.status,
-      record.configHash,
+      record.runHash,
       record.inputDir,
       record.outputDir,
       record.startedAt,
@@ -32,14 +32,14 @@ export class RunStore {
     return row ? mapRun(row as Record<string, unknown>) : undefined;
   }
 
-  findResumable(configHash: string): RunRecord | undefined {
+  findResumable(runHash: string): RunRecord | undefined {
     const row = this.db.prepare(`
       SELECT * FROM runs
-      WHERE config_hash = ?
+      WHERE run_hash = ?
         AND status = ?
       ORDER BY started_at DESC
       LIMIT 1
-    `).get(configHash, RUN_STATUS.running);
+    `).get(runHash, RUN_STATUS.running);
     return row ? mapRun(row as Record<string, unknown>) : undefined;
   }
 

@@ -47,7 +47,7 @@ deno task translate --config ./.local/smoke-test/smoke-cli-config.yaml --max-suc
 - CLI 解码 `data[0].b64_json` 并写出输出图片
 - 当 `output.formatFromApi: true` 时，输出扩展名跟随响应 `output_format`
 - 当 `output.formatFromApi: false` 时，输出扩展名跟随配置中的 `openai.image.outputFormat`
-- 当已加载配置对应的 `config hash` 一致、上一批次仍处于 `running`、且 `queue.resume` 为
+- 当已加载配置对应的 `run hash` 一致、上一批次仍处于 `running`、且 `queue.resume` 为
   `true` 时，批次可以自动续跑，并将当前扫描结果合并到原批次中
 - 当使用 `--max-success <n>` 时，CLI 会在当前 invocation 中成功完成 `n` 个新图片任务后停止继续调度，等待已在执行中的任务结束，并保持批次可续跑
 

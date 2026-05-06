@@ -3,6 +3,7 @@ import type {
   JobRecord,
   OutputRecord,
   ProcessingMetadataRecord,
+  RunConfigRecord,
   RunRecord,
 } from "../shared/types.ts";
 
@@ -12,7 +13,7 @@ export function mapRun(row: Row): RunRecord {
   return {
     id: stringValue(row.id),
     status: stringValue(row.status) as RunRecord["status"],
-    configHash: stringValue(row.config_hash),
+    runHash: stringValue(row.run_hash),
     inputDir: stringValue(row.input_dir),
     outputDir: stringValue(row.output_dir),
     startedAt: stringValue(row.started_at),
@@ -21,6 +22,15 @@ export function mapRun(row: Row): RunRecord {
     succeededJobs: numberValue(row.succeeded_jobs),
     failedJobs: numberValue(row.failed_jobs),
     skippedJobs: numberValue(row.skipped_jobs),
+  };
+}
+
+export function mapRunConfig(row: Row): RunConfigRecord {
+  return {
+    runId: stringValue(row.run_id),
+    configVersion: numberValue(row.config_version),
+    configJson: stringValue(row.config_json),
+    createdAt: stringValue(row.created_at),
   };
 }
 

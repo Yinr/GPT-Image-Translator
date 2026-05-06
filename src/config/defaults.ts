@@ -45,7 +45,7 @@ export const defaultConfig: ResolvedConfig = {
     backoffFactor: 2,
   },
   storage: {
-    sqlitePath: "./state/translator.db",
+    sqlitePath: "./data.db",
   },
   preprocess: {
     aspectPad: {

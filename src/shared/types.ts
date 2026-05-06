@@ -162,7 +162,7 @@ export interface RetryDecision {
 export interface RunRecord {
   id: string;
   status: RunStatus;
-  configHash: string;
+  runHash: string;
   inputDir: string;
   outputDir: string;
   startedAt: string;
@@ -171,6 +171,13 @@ export interface RunRecord {
   succeededJobs: number;
   failedJobs: number;
   skippedJobs: number;
+}
+
+export interface RunConfigRecord {
+  runId: string;
+  configVersion: number;
+  configJson: string;
+  createdAt: string;
 }
 
 export interface JobRecord {

@@ -15,7 +15,7 @@ Deno.test("planner upserts jobs and scheduler returns pending jobs", () => {
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -56,7 +56,7 @@ Deno.test("planner can mark existing outputs as skipped", () => {
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -94,7 +94,7 @@ Deno.test("scheduler returns due retryable jobs only", () => {
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,

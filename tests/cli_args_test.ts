@@ -11,11 +11,40 @@ Deno.test("parseCliArgs defaults to translate command", () => {
 });
 
 Deno.test("parseCliArgs parses query subcommands", () => {
-  const args = parseCliArgs(["inspect", "--config", "config.yaml", "--run", "run-1"]);
+  const args = parseCliArgs([
+    "inspect",
+    "--config",
+    "config.yaml",
+    "--db",
+    "./data.db",
+    "--run",
+    "run-1",
+  ]);
 
   assertEquals(args.command, "inspect");
   assertEquals(args.config, "config.yaml");
+  assertEquals(args.db, "./data.db");
   assertEquals(args.runId, "run-1");
+});
+
+Deno.test("parseCliArgs parses translate run restore options", () => {
+  const args = parseCliArgs(["translate", "--run", "run-1", "--db", "./data.db"]);
+
+  assertEquals(args.command, "translate");
+  assertEquals(args.runId, "run-1");
+  assertEquals(args.db, "./data.db");
+});
+
+Deno.test("parseCliArgs rejects empty db path", () => {
+  try {
+    parseCliArgs(["status", "--db", "  "]);
+    throw new Error("Expected parseCliArgs to reject empty db path");
+  } catch (error) {
+    assertEquals(
+      error instanceof Error ? error.message : String(error),
+      "--db must not be empty",
+    );
+  }
 });
 
 Deno.test("parseCliArgs parses status limit", () => {

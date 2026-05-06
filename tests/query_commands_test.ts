@@ -24,7 +24,7 @@ Deno.test("query commands expose run status, inspect, and failed jobs", async ()
     runs.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,

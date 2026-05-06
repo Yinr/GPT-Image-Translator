@@ -22,7 +22,7 @@ Deno.test("runQueue processes runnable jobs and updates run status", async () =>
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -90,7 +90,7 @@ Deno.test("runQueue refills an available concurrency slot as soon as a job finis
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -172,7 +172,7 @@ Deno.test("runQueue stops after current job when graceful stop is requested", as
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -256,7 +256,7 @@ Deno.test("runQueue waits for all in-flight jobs after graceful stop is requeste
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -350,7 +350,7 @@ Deno.test("runQueue stops scheduling new jobs after reaching success limit", asy
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -422,7 +422,7 @@ Deno.test("runQueue lets in-flight jobs finish after success limit is reached", 
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -510,7 +510,7 @@ Deno.test("runQueue does not over-launch concurrency when only one success slot 
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -595,7 +595,7 @@ Deno.test("runQueue can continue after an in-flight job fails under success limi
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -689,7 +689,7 @@ Deno.test("runQueue counts only new successes toward max success", async () => {
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -773,7 +773,7 @@ Deno.test("runQueue does not start a job when stop is requested during min delay
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -845,7 +845,7 @@ Deno.test("runQueue waits for run cooldown after retryable failure before next p
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
@@ -932,7 +932,7 @@ Deno.test("runQueue uses longest cooldown from concurrent retryable failures", a
     runStore.create({
       id: "run-1",
       status: "running",
-      configHash: "hash",
+      runHash: "hash",
       inputDir: "/input",
       outputDir: "/output",
       startedAt: now,
